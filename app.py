@@ -2,6 +2,7 @@ import os
 from datetime import date
 
 import pandas as pd
+import plotly.express as px
 import streamlit as st
 
 
@@ -596,7 +597,7 @@ if rol == "admin":
     varsayilan_index = 0
 elif rol == "staff":
     kullanilabilir_sayfalar = STAFF_SAYFALARI
-    varsayilan_index = 0  # Veri Girişi
+    varsayilan_index = 0
 else:
     kullanilabilir_sayfalar = []
     varsayilan_index = 0
@@ -674,6 +675,82 @@ if sayfa == "Ana Panel":
         st.metric("Bu Ay Toplam Gider", format_tl(bu_ay_toplam_gider))
     with m3:
         st.metric("Bu Ay Net Kâr", format_tl(bu_ay_net_kar))
+
+    st.markdown("###")
+
+    grafik_sol, grafik_sag = st.columns(2)
+
+    with grafik_sol:
+        st.subheader("Satış Trendi")
+        if satislar_df.empty or "Tarih" not in satislar_df.columns or "Tutar" not in satislar_df.columns:
+            st.info("Grafik için henüz yeterli veri yok.")
+        else:
+            satis_grafik_df = satislar_df.copy()
+            satis_grafik_df = satis_grafik_df.dropna(subset=["Tarih"])
+            satis_grafik_df["Tutar"] = pd.to_numeric(satis_grafik_df["Tutar"], errors="coerce").fillna(0)
+
+            if satis_grafik_df.empty:
+                st.info("Grafik için henüz yeterli veri yok.")
+            else:
+                satis_grafik_df = (
+                    satis_grafik_df.groupby("Tarih", as_index=False)["Tutar"]
+                    .sum()
+                    .sort_values("Tarih")
+                )
+
+                fig_satis = px.line(
+                    satis_grafik_df,
+                    x="Tarih",
+                    y="Tutar",
+                    markers=True,
+                    title=""
+                )
+                fig_satis.update_traces(line=dict(width=3))
+                fig_satis.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    margin=dict(l=10, r=10, t=10, b=10),
+                    font=dict(color="#111827"),
+                    xaxis_title="Tarih",
+                    yaxis_title="Tutar (TL)",
+                )
+                fig_satis.update_xaxes(showgrid=False)
+                fig_satis.update_yaxes(gridcolor="rgba(17,24,39,0.08)")
+                st.plotly_chart(fig_satis, use_container_width=True)
+
+    with grafik_sag:
+        st.subheader("Gider Dağılımı")
+        if giderler_df.empty or "Gider Kalemi" not in giderler_df.columns or "Tutar" not in giderler_df.columns:
+            st.info("Grafik için henüz yeterli veri yok.")
+        else:
+            gider_grafik_df = giderler_df.copy()
+            gider_grafik_df["Tutar"] = pd.to_numeric(gider_grafik_df["Tutar"], errors="coerce").fillna(0)
+            gider_grafik_df["Gider Kalemi"] = gider_grafik_df["Gider Kalemi"].fillna("Belirtilmemiş")
+
+            gider_grafik_df = (
+                gider_grafik_df.groupby("Gider Kalemi", as_index=False)["Tutar"]
+                .sum()
+                .sort_values("Tutar", ascending=False)
+            )
+
+            if gider_grafik_df.empty:
+                st.info("Grafik için henüz yeterli veri yok.")
+            else:
+                fig_gider = px.pie(
+                    gider_grafik_df,
+                    names="Gider Kalemi",
+                    values="Tutar",
+                    hole=0.55,
+                    title=""
+                )
+                fig_gider.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    margin=dict(l=10, r=10, t=10, b=10),
+                    font=dict(color="#111827"),
+                    legend_title_text="Gider Kalemi"
+                )
+                st.plotly_chart(fig_gider, use_container_width=True)
 
     st.markdown("###")
 
