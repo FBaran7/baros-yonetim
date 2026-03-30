@@ -21,6 +21,7 @@ st.set_page_config(
 # -----------------------------
 SATISLAR_DOSYA = "satislar.csv"
 GIDERLER_DOSYA = "giderler.csv"
+STOK_DOSYA = "stok.csv"
 
 
 # -----------------------------
@@ -57,6 +58,11 @@ def csv_dosyalarini_hazirla():
             columns=["Tarih", "Gider Kalemi", "Tutar"]
         ).to_csv(GIDERLER_DOSYA, index=False, encoding="utf-8-sig")
 
+    if not os.path.exists(STOK_DOSYA):
+        pd.DataFrame(
+            columns=["Ürün Kodu", "Ürün Adı", "Kategori", "Stok Adedi", "Birim Maliyet"]
+        ).to_csv(STOK_DOSYA, index=False, encoding="utf-8-sig")
+
 
 def satislari_oku() -> pd.DataFrame:
     """Satışlar CSV dosyasını okur."""
@@ -90,6 +96,22 @@ def giderleri_oku() -> pd.DataFrame:
     return df
 
 
+def stok_oku() -> pd.DataFrame:
+    """Stok CSV dosyasını okur."""
+    df = pd.read_csv(STOK_DOSYA, encoding="utf-8-sig")
+
+    if df.empty:
+        df = pd.DataFrame(columns=["Ürün Kodu", "Ürün Adı", "Kategori", "Stok Adedi", "Birim Maliyet"])
+
+    if "Stok Adedi" in df.columns:
+        df["Stok Adedi"] = pd.to_numeric(df["Stok Adedi"], errors="coerce").fillna(0)
+
+    if "Birim Maliyet" in df.columns:
+        df["Birim Maliyet"] = pd.to_numeric(df["Birim Maliyet"], errors="coerce").fillna(0)
+
+    return df
+
+
 def bu_ay_toplam_hesapla(df: pd.DataFrame) -> float:
     """Verilen DataFrame için bu ayın toplam tutarını hesaplar."""
     if df.empty or "Tarih" not in df.columns or "Tutar" not in df.columns:
@@ -118,6 +140,57 @@ def tablo_gosterime_hazirla(df: pd.DataFrame, tutar_kolonu: str) -> pd.DataFrame
     return df_gosterim
 
 
+def stok_tablo_gosterime_hazirla(df: pd.DataFrame) -> pd.DataFrame:
+    """Stok tablosunu ekranda gösterilecek hale getirir."""
+    if df.empty:
+        return pd.DataFrame(columns=["Ürün Kodu", "Ürün Adı", "Kategori", "Stok Adedi", "Birim Maliyet", "Toplam Maliyet"])
+
+    df_gosterim = df.copy()
+    df_gosterim["Toplam Maliyet"] = df_gosterim["Stok Adedi"] * df_gosterim["Birim Maliyet"]
+
+    df_gosterim["Stok Adedi"] = df_gosterim["Stok Adedi"].apply(
+        lambda x: int(x) if float(x).is_integer() else x
+    )
+    df_gosterim["Birim Maliyet"] = df_gosterim["Birim Maliyet"].apply(format_tl)
+    df_gosterim["Toplam Maliyet"] = df_gosterim["Toplam Maliyet"].apply(format_tl)
+
+    return df_gosterim
+
+
+def stok_toplam_maliyet_hesapla(df: pd.DataFrame) -> float:
+    """Toplam stok maliyetini hesaplar."""
+    if df.empty:
+        return 0.0
+    return float((df["Stok Adedi"] * df["Birim Maliyet"]).sum())
+
+
+def stok_toplam_adet_hesapla(df: pd.DataFrame) -> int:
+    """Toplam ürün adedini hesaplar."""
+    if df.empty:
+        return 0
+    return int(df["Stok Adedi"].sum())
+
+
+def stok_gruplari_hesapla(df: pd.DataFrame) -> pd.DataFrame:
+    """Kategori bazlı stok değeri tablosu üretir."""
+    if df.empty:
+        return pd.DataFrame(columns=["Ürün Grubu", "Stok Değeri"])
+
+    temp_df = df.copy()
+    temp_df["Toplam Maliyet"] = temp_df["Stok Adedi"] * temp_df["Birim Maliyet"]
+
+    grup_df = (
+        temp_df.groupby("Kategori", dropna=False)["Toplam Maliyet"]
+        .sum()
+        .reset_index()
+        .rename(columns={"Kategori": "Ürün Grubu", "Toplam Maliyet": "Stok Değeri"})
+        .sort_values(by="Stok Değeri", ascending=False)
+    )
+
+    grup_df["Stok Değeri"] = grup_df["Stok Değeri"].apply(format_tl)
+    return grup_df
+
+
 # -----------------------------
 # CSV dosyalarını hazırla
 # -----------------------------
@@ -127,7 +200,6 @@ csv_dosyalarini_hazirla()
 # -----------------------------
 # Sabit demo veriler
 # -----------------------------
-toplam_stok_maliyeti = 2_490_000
 toplam_musteri_alacagi = 1_180_000
 toplam_tedarikci_borcu = 790_000
 
@@ -140,34 +212,6 @@ yaklasan_odemeler_df = pd.DataFrame(
             format_tl(75_000),
             format_tl(48_000),
             format_tl(32_000),
-        ],
-    }
-)
-
-stok_gruplari_df = pd.DataFrame(
-    {
-        "Ürün Grubu": ["Gömlek", "Mont", "Tişört", "Sweatshirt", "Pantolon"],
-        "Stok Değeri": [
-            format_tl(1_250_000),
-            format_tl(830_000),
-            format_tl(410_000),
-            format_tl(290_000),
-            format_tl(210_000),
-        ],
-    }
-)
-
-stok_detay_df = pd.DataFrame(
-    {
-        "Ürün Kodu": ["BRS-GMLK-001", "BRS-MNT-004", "BRS-TSRT-012", "BRS-SWT-006"],
-        "Ürün Adı": ["Slim Fit Gömlek", "Kapitone Mont", "Basic Tişört", "Kapüşonlu Sweat"],
-        "Kategori": ["Gömlek", "Mont", "Tişört", "Sweatshirt"],
-        "Stok Adedi": [320, 110, 540, 180],
-        "Birim Maliyet": [
-            format_tl(850),
-            format_tl(2_300),
-            format_tl(280),
-            format_tl(650)
         ],
     }
 )
@@ -192,13 +236,20 @@ cari_df = pd.DataFrame(
 # -----------------------------
 satislar_df = satislari_oku()
 giderler_df = giderleri_oku()
+stok_df = stok_oku()
 
 bu_ay_satis = bu_ay_toplam_hesapla(satislar_df)
 bu_ay_toplam_gider = bu_ay_toplam_hesapla(giderler_df)
 bu_ay_net_kar = bu_ay_satis - bu_ay_toplam_gider
 
+toplam_stok_maliyeti = stok_toplam_maliyet_hesapla(stok_df)
+toplam_urun_adedi = stok_toplam_adet_hesapla(stok_df)
+toplam_kayitli_urun = len(stok_df.index)
+
 satislar_gosterim_df = tablo_gosterime_hazirla(satislar_df, "Tutar")
 giderler_gosterim_df = tablo_gosterime_hazirla(giderler_df, "Tutar")
+stok_detay_gosterim_df = stok_tablo_gosterime_hazirla(stok_df)
+stok_gruplari_df = stok_gruplari_hesapla(stok_df)
 
 
 # -----------------------------
@@ -464,18 +515,18 @@ if sayfa == "Ana Panel":
 
 elif sayfa == "Stok Değerleme":
     st.title("📦 Stok Değerleme")
-    st.caption("Sahte verilerle hazırlanmış örnek stok ekranı")
+    st.caption("Stok verileri stok.csv dosyasından okunur")
 
     c1, c2, c3 = st.columns(3)
     with c1:
         st.metric("Toplam Stok Maliyeti", format_tl(toplam_stok_maliyeti))
     with c2:
-        st.metric("Toplam Satış Değeri", format_tl(4_180_000))
+        st.metric("Toplam Kayıtlı Ürün", str(toplam_kayitli_urun))
     with c3:
-        st.metric("Toplam Ürün Adedi", "1.150")
+        st.metric("Toplam Ürün Adedi", str(toplam_urun_adedi))
 
     st.markdown("### Stok Detayları")
-    st.dataframe(stok_detay_df, use_container_width=True, hide_index=True)
+    st.dataframe(stok_detay_gosterim_df, use_container_width=True, hide_index=True)
 
 elif sayfa == "Cari":
     st.title("💳 Cari")
@@ -525,9 +576,12 @@ elif sayfa == "Giderler":
 
 elif sayfa == "Veri Girişi":
     st.title("📝 Veri Girişi")
-    st.caption("Yeni satış ve gider kayıtlarını CSV dosyalarına ekleyin")
+    st.caption("Yeni satış, gider ve stok kayıtlarını CSV dosyalarına ekleyin")
 
-    sol, sag = st.columns(2)
+    if "bildirim_mesaji" in st.session_state:
+        st.success(st.session_state.pop("bildirim_mesaji"))
+
+    sol, orta, sag = st.columns(3)
 
     with sol:
         st.subheader("Yeni Satış Ekle")
@@ -564,9 +618,10 @@ elif sayfa == "Veri Girişi":
                         index=False,
                         encoding="utf-8-sig"
                     )
-                    st.success("Yeni satış başarıyla kaydedildi.")
+                    st.session_state["bildirim_mesaji"] = "Yeni satış başarıyla kaydedildi."
+                    st.rerun()
 
-    with sag:
+    with orta:
         st.subheader("Yeni Gider Ekle")
         with st.form("yeni_gider_formu", clear_on_submit=True):
             gider_tarih = st.date_input("Tarih", value=date.today(), key="gider_tarih")
@@ -599,7 +654,53 @@ elif sayfa == "Veri Girişi":
                         index=False,
                         encoding="utf-8-sig"
                     )
-                    st.success("Yeni gider başarıyla kaydedildi.")
+                    st.session_state["bildirim_mesaji"] = "Yeni gider başarıyla kaydedildi."
+                    st.rerun()
+
+    with sag:
+        st.subheader("Yeni Ürün / Stok Ekle")
+        with st.form("yeni_stok_formu", clear_on_submit=True):
+            urun_kodu = st.text_input("Ürün Kodu", key="urun_kodu")
+            urun_adi = st.text_input("Ürün Adı", key="urun_adi")
+            kategori = st.text_input("Kategori", key="kategori")
+            stok_adedi = st.number_input(
+                "Stok Adedi",
+                min_value=0,
+                step=1,
+                key="stok_adedi"
+            )
+            birim_maliyet = st.number_input(
+                "Birim Maliyet",
+                min_value=0.0,
+                step=10.0,
+                format="%.2f",
+                key="birim_maliyet"
+            )
+
+            stok_submit = st.form_submit_button("Ürünü / Stoğu Kaydet")
+
+            if stok_submit:
+                if not urun_kodu.strip() or not urun_adi.strip() or not kategori.strip():
+                    st.error("Lütfen tüm ürün alanlarını doldurun.")
+                else:
+                    yeni_stok = pd.DataFrame(
+                        [{
+                            "Ürün Kodu": urun_kodu.strip(),
+                            "Ürün Adı": urun_adi.strip(),
+                            "Kategori": kategori.strip(),
+                            "Stok Adedi": stok_adedi,
+                            "Birim Maliyet": birim_maliyet
+                        }]
+                    )
+                    yeni_stok.to_csv(
+                        STOK_DOSYA,
+                        mode="a",
+                        header=False,
+                        index=False,
+                        encoding="utf-8-sig"
+                    )
+                    st.session_state["bildirim_mesaji"] = "Yeni ürün / stok başarıyla kaydedildi."
+                    st.rerun()
 
     st.markdown("###")
     st.info("Not: Kayıt ekledikten sonra diğer sayfalardaki metrikler ve tablolar güncel verilerle çalışır.")
