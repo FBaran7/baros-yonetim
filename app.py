@@ -17,18 +17,36 @@ st.set_page_config(
 
 
 # -----------------------------
-# Kimlik doğrulama
+# Kimlik doğrulama / roller
 # -----------------------------
 GECERLI_KULLANICILAR = {
-    "patron": "baros2026",
-    "depo": "depo123",
+    "patron": {"password": "baros2026", "role": "admin"},
+    "depo": {"password": "depo123", "role": "staff"},
 }
+
+ADMIN_SAYFALARI = [
+    "Ana Panel",
+    "Stok Değerleme",
+    "Cari",
+    "Satışlar",
+    "Giderler",
+    "Veri Girişi",
+    "Maliyet Simülatörü",
+]
+
+STAFF_SAYFALARI = [
+    "Veri Girişi",
+    "Stok Değerleme",
+]
 
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
 
 if "username" not in st.session_state:
     st.session_state["username"] = ""
+
+if "role" not in st.session_state:
+    st.session_state["role"] = ""
 
 
 def giris_ekrani_goster():
@@ -128,9 +146,12 @@ def giris_ekrani_goster():
             giris_buton = st.form_submit_button("Giriş Yap")
 
             if giris_buton:
-                if GECERLI_KULLANICILAR.get(kullanici_adi) == sifre:
+                kullanici = GECERLI_KULLANICILAR.get(kullanici_adi)
+
+                if kullanici and kullanici["password"] == sifre:
                     st.session_state["logged_in"] = True
                     st.session_state["username"] = kullanici_adi
+                    st.session_state["role"] = kullanici["role"]
                     st.rerun()
                 else:
                     st.error("Kullanıcı adı veya şifre hatalı.")
@@ -561,29 +582,43 @@ st.markdown(
 
 
 # -----------------------------
-# Sidebar
+# Sidebar / RBAC
 # -----------------------------
 if os.path.exists("logo.jpg"):
     st.sidebar.image("logo.jpg", use_container_width=True)
 
 st.sidebar.title("📂 Menü")
+
+rol = st.session_state.get("role", "")
+
+if rol == "admin":
+    kullanilabilir_sayfalar = ADMIN_SAYFALARI
+    varsayilan_index = 0
+elif rol == "staff":
+    kullanilabilir_sayfalar = STAFF_SAYFALARI
+    varsayilan_index = 0  # Veri Girişi
+else:
+    kullanilabilir_sayfalar = []
+    varsayilan_index = 0
+
+if not kullanilabilir_sayfalar:
+    st.error("Bu kullanıcı için yetki tanımlı değil.")
+    st.stop()
+
 sayfa = st.sidebar.radio(
     "Sayfa Seçin",
-    [
-        "Ana Panel",
-        "Stok Değerleme",
-        "Cari",
-        "Satışlar",
-        "Giderler",
-        "Veri Girişi",
-        "Maliyet Simülatörü"
-    ]
+    kullanilabilir_sayfalar,
+    index=varsayilan_index
 )
+
+if rol == "staff" and sayfa not in STAFF_SAYFALARI:
+    sayfa = "Veri Girişi"
 
 st.sidebar.markdown("---")
 st.sidebar.caption("Baros Yönetim Sistemi")
 st.sidebar.caption("Premium demo arayüz")
 st.sidebar.caption(f"Giriş yapan kullanıcı: {st.session_state.get('username', '')}")
+st.sidebar.caption(f"Rol: {st.session_state.get('role', '')}")
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("<div style='height: 150px;'></div>", unsafe_allow_html=True)
