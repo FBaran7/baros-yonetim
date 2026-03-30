@@ -72,11 +72,12 @@ def giris_ekrani_goster():
             }
 
             .giris-karti {
-                background: #ffffff;
-                padding: 34px 30px 28px 30px;
-                border-radius: 24px;
-                border: 1px solid rgba(15, 23, 42, 0.06);
-                box-shadow: 0 20px 60px rgba(15, 23, 42, 0.10);
+                background: rgba(255, 255, 255, 0.96);
+                padding: 34px 28px 28px 28px;
+                border-radius: 28px;
+                border: none;
+                box-shadow: 0 24px 64px rgba(15, 23, 42, 0.10);
+                backdrop-filter: blur(10px);
             }
 
             .giris-baslik {
@@ -95,21 +96,59 @@ def giris_ekrani_goster():
                 margin-bottom: 24px;
             }
 
-            div[data-baseweb="input"] > div {
-                border-radius: 14px !important;
+            /* Mobil dark mode / tüm inputlar için kesin renk düzeltmesi */
+            input, textarea, select {
+                color: #111827 !important;
+                background-color: #ffffff !important;
+                -webkit-text-fill-color: #111827 !important;
+                caret-color: #111827 !important;
+            }
+
+            input::placeholder,
+            textarea::placeholder,
+            select::placeholder {
+                color: #6b7280 !important;
+                -webkit-text-fill-color: #6b7280 !important;
+                opacity: 1 !important;
+            }
+
+            div[data-baseweb="input"] > div,
+            div[data-baseweb="textarea"] > div,
+            div[data-baseweb="select"] > div,
+            .stDateInput > div > div {
+                border-radius: 16px !important;
                 border: 1px solid rgba(15, 23, 42, 0.08) !important;
                 background: #ffffff !important;
                 box-shadow: none !important;
             }
 
+            div[data-baseweb="input"] input,
+            div[data-baseweb="textarea"] textarea,
+            div[data-baseweb="select"] input,
+            .stDateInput input {
+                color: #111827 !important;
+                background-color: #ffffff !important;
+                -webkit-text-fill-color: #111827 !important;
+                caret-color: #111827 !important;
+            }
+
+            div[data-baseweb="input"] input::placeholder,
+            div[data-baseweb="textarea"] textarea::placeholder,
+            div[data-baseweb="select"] input::placeholder,
+            .stDateInput input::placeholder {
+                color: #6b7280 !important;
+                -webkit-text-fill-color: #6b7280 !important;
+                opacity: 1 !important;
+            }
+
             [data-testid="stFormSubmitButton"] > button {
                 width: 100%;
-                border-radius: 14px;
+                border-radius: 16px;
                 border: none;
                 background: linear-gradient(135deg, #111827 0%, #374151 100%);
                 color: #ffffff;
                 font-weight: 700;
-                padding: 0.78rem 1rem;
+                padding: 0.82rem 1rem;
                 box-shadow: 0 10px 22px rgba(17, 24, 39, 0.18);
                 transition: all 0.2s ease;
             }
@@ -454,8 +493,54 @@ st.markdown(
             letter-spacing: -0.02em;
         }
 
-        p, label, div {
+        p, label, div, span {
             color: #1f2937;
+        }
+
+        /* Mobil dark mode / tüm inputlar için kesin düzeltme */
+        input, textarea, select {
+            color: #111827 !important;
+            background-color: #ffffff !important;
+            -webkit-text-fill-color: #111827 !important;
+            caret-color: #111827 !important;
+        }
+
+        input::placeholder,
+        textarea::placeholder,
+        select::placeholder {
+            color: #6b7280 !important;
+            -webkit-text-fill-color: #6b7280 !important;
+            opacity: 1 !important;
+        }
+
+        div[data-baseweb="input"] > div,
+        div[data-baseweb="select"] > div,
+        div[data-baseweb="textarea"] > div,
+        .stDateInput > div > div {
+            border-radius: 14px !important;
+            border: 1px solid rgba(15, 23, 42, 0.08) !important;
+            background: #ffffff !important;
+            box-shadow: none !important;
+        }
+
+        div[data-baseweb="input"] input,
+        div[data-baseweb="textarea"] textarea,
+        div[data-baseweb="select"] input,
+        div[data-baseweb="select"] div,
+        .stDateInput input {
+            color: #111827 !important;
+            background-color: #ffffff !important;
+            -webkit-text-fill-color: #111827 !important;
+            caret-color: #111827 !important;
+        }
+
+        div[data-baseweb="input"] input::placeholder,
+        div[data-baseweb="textarea"] textarea::placeholder,
+        div[data-baseweb="select"] input::placeholder,
+        .stDateInput input::placeholder {
+            color: #6b7280 !important;
+            -webkit-text-fill-color: #6b7280 !important;
+            opacity: 1 !important;
         }
 
         /* Kartlar */
@@ -520,17 +605,6 @@ st.markdown(
             box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
         }
 
-        /* Form alanları */
-        div[data-baseweb="input"] > div,
-        div[data-baseweb="select"] > div,
-        div[data-baseweb="textarea"] > div,
-        .stDateInput > div > div {
-            border-radius: 14px !important;
-            border: 1px solid rgba(15, 23, 42, 0.08) !important;
-            background: #ffffff !important;
-            box-shadow: none !important;
-        }
-
         /* Butonlar */
         .stButton > button,
         [data-testid="stFormSubmitButton"] > button {
@@ -538,7 +612,8 @@ st.markdown(
             border-radius: 14px;
             border: none;
             background: linear-gradient(135deg, #111827 0%, #374151 100%);
-            color: #ffffff;
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
             font-weight: 700;
             padding: 0.72rem 1rem;
             box-shadow: 0 10px 22px rgba(17, 24, 39, 0.18);
