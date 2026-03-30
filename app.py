@@ -17,6 +17,137 @@ st.set_page_config(
 
 
 # -----------------------------
+# Kimlik doğrulama
+# -----------------------------
+GECERLI_KULLANICILAR = {
+    "patron": "baros2026",
+    "depo": "depo123",
+}
+
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
+
+if "username" not in st.session_state:
+    st.session_state["username"] = ""
+
+
+def giris_ekrani_goster():
+    """Sadece giriş ekranını gösterir."""
+    st.markdown(
+        """
+        <style>
+            .stApp {
+                background: linear-gradient(135deg, #f4f5f7 0%, #eef2f7 100%);
+            }
+
+            #MainMenu, footer, header,
+            section[data-testid="stSidebar"],
+            [data-testid="collapsedControl"] {
+                display: none !important;
+            }
+
+            .block-container {
+                padding-top: 4rem;
+                padding-bottom: 2rem;
+                max-width: 1200px;
+            }
+
+            .giris-karti {
+                background: #ffffff;
+                padding: 34px 30px 28px 30px;
+                border-radius: 24px;
+                border: 1px solid rgba(15, 23, 42, 0.06);
+                box-shadow: 0 20px 60px rgba(15, 23, 42, 0.10);
+            }
+
+            .giris-baslik {
+                font-size: 32px;
+                font-weight: 800;
+                color: #111827;
+                text-align: center;
+                margin-bottom: 8px;
+                letter-spacing: -0.02em;
+            }
+
+            .giris-aciklama {
+                font-size: 15px;
+                color: #6b7280;
+                text-align: center;
+                margin-bottom: 24px;
+            }
+
+            div[data-baseweb="input"] > div {
+                border-radius: 14px !important;
+                border: 1px solid rgba(15, 23, 42, 0.08) !important;
+                background: #ffffff !important;
+                box-shadow: none !important;
+            }
+
+            [data-testid="stFormSubmitButton"] > button {
+                width: 100%;
+                border-radius: 14px;
+                border: none;
+                background: linear-gradient(135deg, #111827 0%, #374151 100%);
+                color: #ffffff;
+                font-weight: 700;
+                padding: 0.78rem 1rem;
+                box-shadow: 0 10px 22px rgba(17, 24, 39, 0.18);
+                transition: all 0.2s ease;
+            }
+
+            [data-testid="stFormSubmitButton"] > button:hover {
+                transform: translateY(-1px);
+                box-shadow: 0 14px 28px rgba(17, 24, 39, 0.24);
+                background: linear-gradient(135deg, #0f172a 0%, #1f2937 100%);
+            }
+
+            .giris-alti-not {
+                margin-top: 20px;
+                text-align: center;
+                color: #9ca3af;
+                font-size: 13px;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+    bos1, orta, bos2 = st.columns([1.2, 1, 1.2])
+
+    with orta:
+        st.markdown('<div class="giris-karti">', unsafe_allow_html=True)
+        st.markdown('<div class="giris-baslik">Giriş Yap</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="giris-aciklama">Yönetim, Stok ve Karlılık Kontrol Sistemi</div>',
+            unsafe_allow_html=True
+        )
+
+        with st.form("giris_formu", clear_on_submit=False):
+            kullanici_adi = st.text_input("Kullanıcı Adı")
+            sifre = st.text_input("Şifre", type="password")
+            giris_buton = st.form_submit_button("Giriş Yap")
+
+            if giris_buton:
+                if GECERLI_KULLANICILAR.get(kullanici_adi) == sifre:
+                    st.session_state["logged_in"] = True
+                    st.session_state["username"] = kullanici_adi
+                    st.rerun()
+                else:
+                    st.error("Kullanıcı adı veya şifre hatalı.")
+
+        st.markdown(
+            '<div class="giris-alti-not">Yetkisiz erişim engellenmiştir.</div>',
+            unsafe_allow_html=True
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
+
+
+if not st.session_state["logged_in"]:
+    giris_ekrani_goster()
+    st.stop()
+
+
+# -----------------------------
 # Dosya yolları
 # -----------------------------
 SATISLAR_DOSYA = "satislar.csv"
@@ -452,6 +583,14 @@ sayfa = st.sidebar.radio(
 st.sidebar.markdown("---")
 st.sidebar.caption("Baros Yönetim Sistemi")
 st.sidebar.caption("Premium demo arayüz")
+st.sidebar.caption(f"Giriş yapan kullanıcı: {st.session_state.get('username', '')}")
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("<div style='height: 150px;'></div>", unsafe_allow_html=True)
+if st.sidebar.button("🚪 Çıkış Yap"):
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+    st.rerun()
 
 
 # -----------------------------
