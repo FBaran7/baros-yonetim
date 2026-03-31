@@ -574,7 +574,8 @@ st.markdown(
 
         /* Butonlar */
         .stButton > button,
-        [data-testid="stFormSubmitButton"] > button {
+        [data-testid="stFormSubmitButton"] > button,
+        [data-testid="stDownloadButton"] > button {
             width: 100%;
             border-radius: 14px;
             border: none;
@@ -588,14 +589,16 @@ st.markdown(
         }
 
         .stButton > button:hover,
-        [data-testid="stFormSubmitButton"] > button:hover {
+        [data-testid="stFormSubmitButton"] > button:hover,
+        [data-testid="stDownloadButton"] > button:hover {
             transform: translateY(-1px);
             box-shadow: 0 14px 28px rgba(17, 24, 39, 0.24);
             background: linear-gradient(135deg, #0f172a 0%, #1f2937 100%);
         }
 
         .stButton > button:focus,
-        [data-testid="stFormSubmitButton"] > button:focus {
+        [data-testid="stFormSubmitButton"] > button:focus,
+        [data-testid="stDownloadButton"] > button:focus {
             outline: none;
             box-shadow: 0 0 0 0.2rem rgba(55, 65, 81, 0.18);
         }
@@ -678,8 +681,44 @@ if sayfa == "Ana Panel":
     st.title("📊 Ana Panel")
     st.caption("Toptan tekstil şirketi için kâr/zarar ve depo değerleme odaklı yönetici ekranı")
 
-    # ERP dışa aktarımı gibi detaylı örnek veri
-    erp_df = pd.DataFrame(
+    # Dış sistem şablonu
+    gerekli_kolonlar = [
+        "Ürün Kategori",
+        "Sezon",
+        "Ürün Adı",
+        "Birim Satış Fiyatı (TL)",
+        "Birim Üretim Maliyeti (TL)",
+        "Satılan Adet",
+        "Depodaki Kalan Adet",
+    ]
+
+    with st.expander("📥 Dış Sistemden Veri Yükle (Excel/CSV)", expanded=False):
+        ornek_df = pd.DataFrame(
+            {
+                "Ürün Kategori": ["Gömlek", "Mont"],
+                "Sezon": ["İlkbahar 2026", "Kış 2025"],
+                "Ürün Adı": ["Slim Fit Poplin Gömlek", "Kapitone Şişme Mont"],
+                "Birim Satış Fiyatı (TL)": [720, 1450],
+                "Birim Üretim Maliyeti (TL)": [410, 920],
+                "Satılan Adet": [980, 410],
+                "Depodaki Kalan Adet": [260, 95],
+            }
+        )
+
+        st.download_button(
+            label="📄 Örnek CSV Şablonunu İndir",
+            data=ornek_df.to_csv(index=False, encoding="utf-8-sig"),
+            file_name="erp_dashboard_ornek_sablon.csv",
+            mime="text/csv"
+        )
+
+        yuklenen_dosya = st.file_uploader(
+            "Excel veya CSV dosyanızı yükleyin",
+            type=["csv", "xlsx"]
+        )
+
+    # Varsayılan demo veri
+    demo_erp_df = pd.DataFrame(
         {
             "Ürün Adı": [
                 "Slim Fit Poplin Gömlek",
@@ -723,6 +762,52 @@ if sayfa == "Ana Panel":
             "Depodaki Kalan Adet": [260, 210, 95, 60, 180, 145, 320, 280, 110, 90],
         }
     )
+
+    erp_df = demo_erp_df.copy()
+    veri_kaynagi_demo = True
+
+    if yuklenen_dosya is not None:
+        try:
+            dosya_adi = yuklenen_dosya.name.lower()
+
+            if dosya_adi.endswith(".csv"):
+                yuklenen_df = pd.read_csv(yuklenen_dosya)
+            else:
+                yuklenen_df = pd.read_excel(yuklenen_dosya)
+
+            eksik_kolonlar = [kolon for kolon in gerekli_kolonlar if kolon not in yuklenen_df.columns]
+
+            if eksik_kolonlar:
+                st.error(
+                    "Yüklenen dosyada eksik kolonlar var: " + ", ".join(eksik_kolonlar)
+                )
+                st.info("Lütfen örnek şablonu indirip aynı kolon yapısıyla yükleyin.")
+                erp_df = demo_erp_df.copy()
+                veri_kaynagi_demo = True
+            else:
+                erp_df = yuklenen_df[gerekli_kolonlar].copy()
+
+                for kolon in [
+                    "Birim Satış Fiyatı (TL)",
+                    "Birim Üretim Maliyeti (TL)",
+                    "Satılan Adet",
+                    "Depodaki Kalan Adet",
+                ]:
+                    erp_df[kolon] = pd.to_numeric(erp_df[kolon], errors="coerce").fillna(0)
+
+                erp_df["Ürün Kategori"] = erp_df["Ürün Kategori"].astype(str)
+                erp_df["Sezon"] = erp_df["Sezon"].astype(str)
+                erp_df["Ürün Adı"] = erp_df["Ürün Adı"].astype(str)
+                veri_kaynagi_demo = False
+
+        except Exception as e:
+            st.error(f"Dosya okunurken bir hata oluştu: {e}")
+            st.info("Lütfen dosya biçiminizi kontrol edin veya örnek şablonu kullanın.")
+            erp_df = demo_erp_df.copy()
+            veri_kaynagi_demo = True
+
+    if veri_kaynagi_demo:
+        st.warning("Şu an Demo (Örnek) verisi görüyorsunuz. Kendi verilerinizi yukarıdan yükleyin.")
 
     # Üst filtre satırı
     filtre_sol, filtre_sag = st.columns(2)
