@@ -371,27 +371,6 @@ csv_dosyalarini_hazirla()
 
 
 # -----------------------------
-# Sabit demo veriler
-# -----------------------------
-toplam_musteri_alacagi = 1_180_000
-toplam_tedarikci_borcu = 790_000
-
-cari_df = pd.DataFrame(
-    {
-        "Cari Adı": ["Yıldız Butik", "Trend Erkek", "Asil Giyim", "Akdeniz Moda"],
-        "Tür": ["Müşteri", "Müşteri", "Tedarikçi", "Tedarikçi"],
-        "Bakiye": [
-            format_tl(320_000),
-            format_tl(210_000),
-            format_tl(185_000),
-            format_tl(96_000),
-        ],
-        "Durum": ["Alacak", "Alacak", "Borç", "Borç"],
-    }
-)
-
-
-# -----------------------------
 # Dinamik veriler
 # -----------------------------
 satislar_df = satislari_oku()
@@ -988,17 +967,104 @@ elif sayfa == "Stok Değerleme":
     st.dataframe(stok_detay_gosterim_df, use_container_width=True, hide_index=True)
 
 elif sayfa == "Cari":
-    st.title("💳 Cari")
-    st.caption("Müşteri ve tedarikçi bakiyeleri için örnek görünüm")
+    st.title("💸 Cari Hesaplar & Nakit Akışı")
+    st.caption("B2B toptan erkek giyim operasyonu için müşteri alacakları ve tedarikçi borç yönetimi")
 
-    c1, c2 = st.columns(2)
-    with c1:
-        st.metric("Toplam Müşteri Alacağı", format_tl(toplam_musteri_alacagi))
-    with c2:
-        st.metric("Toplam Tedarikçi Borcu", format_tl(toplam_tedarikci_borcu))
+    musteri_df = pd.DataFrame(
+        {
+            "Müşteri Adı": [
+                "Yıldız Erkek Giyim",
+                "Karaköy Butik",
+                "Mavi Adam Store",
+                "Ankara Trend Menswear",
+                "İzmir Premium Giyim",
+                "Bursa Moda Erkek",
+            ],
+            "Toplam Satış (TL)": [480000, 365000, 520000, 295000, 410000, 275000],
+            "Tahsil Edilen (TL)": [320000, 210000, 400000, 150000, 265000, 175000],
+            "Vade Durumu": [
+                "Vadesi Yaklaşıyor",
+                "Gecikmiş",
+                "Normal",
+                "Gecikmiş",
+                "Normal",
+                "Vadesi Yaklaşıyor",
+            ],
+        }
+    )
+    musteri_df["Kalan Bakiye (TL)"] = musteri_df["Toplam Satış (TL)"] - musteri_df["Tahsil Edilen (TL)"]
 
-    st.markdown("### Cari Listesi")
-    st.dataframe(cari_df, use_container_width=True, hide_index=True)
+    tedarikci_df = pd.DataFrame(
+        {
+            "Tedarikçi Adı": [
+                "Aydın Kumaşçılık",
+                "Kardeşler Fason Atölye",
+                "Düğmeci Ali",
+                "Marmara Etiket",
+                "Ege Ambalaj",
+            ],
+            "Toplam Borç (TL)": [390000, 285000, 72000, 54000, 46000],
+            "Ödenen (TL)": [210000, 120000, 35000, 18000, 12000],
+            "Vade Tarihi": [
+                "10.04.2026",
+                "15.04.2026",
+                "08.04.2026",
+                "18.04.2026",
+                "22.04.2026",
+            ],
+        }
+    )
+    tedarikci_df["Kalan Borç (TL)"] = tedarikci_df["Toplam Borç (TL)"] - tedarikci_df["Ödenen (TL)"]
+
+    toplam_musteri_alacagi_cari = float(musteri_df["Kalan Bakiye (TL)"].sum())
+    toplam_tedarikci_borcu_cari = float(tedarikci_df["Kalan Borç (TL)"].sum())
+    net_nakit_pozisyonu = toplam_musteri_alacagi_cari - toplam_tedarikci_borcu_cari
+
+    st.markdown("###")
+
+    kart1, kart2, kart3 = st.columns(3)
+
+    with kart1:
+        summary_card(
+            "Toplam Müşteri Alacağı",
+            format_tl(toplam_musteri_alacagi_cari),
+            "🧾",
+            "#ffffff"
+        )
+
+    with kart2:
+        summary_card(
+            "Toplam Tedarikçi Borcu",
+            format_tl(toplam_tedarikci_borcu_cari),
+            "🏷️",
+            "#ffffff"
+        )
+
+    with kart3:
+        summary_card(
+            "Net Nakit Pozisyonu",
+            format_tl(net_nakit_pozisyonu),
+            "💰",
+            "#ffffff"
+        )
+
+    st.markdown("###")
+
+    sol, sag = st.columns(2)
+
+    with sol:
+        st.subheader("Müşteri Alacakları")
+        musteri_gosterim_df = musteri_df.copy()
+        for kolon in ["Toplam Satış (TL)", "Tahsil Edilen (TL)", "Kalan Bakiye (TL)"]:
+            musteri_gosterim_df[kolon] = musteri_gosterim_df[kolon].apply(format_tl)
+        st.dataframe(musteri_gosterim_df, use_container_width=True, hide_index=True)
+
+    with sag:
+        st.subheader("Tedarikçi Borçları")
+        tedarikci_gosterim_df = tedarikci_df.copy()
+        for kolon in ["Toplam Borç (TL)", "Ödenen (TL)", "Kalan Borç (TL)"]:
+            tedarikci_gosterim_df[kolon] = tedarikci_gosterim_df[kolon].apply(format_tl)
+        st.dataframe(tedarikci_gosterim_df, use_container_width=True, hide_index=True)
 
 elif sayfa == "Satışlar":
     st.title("🧾 Satışlar")
