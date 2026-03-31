@@ -3,6 +3,7 @@ from datetime import date
 
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 
@@ -363,26 +364,6 @@ def stok_toplam_adet_hesapla(df: pd.DataFrame) -> int:
     return int(df["Stok Adedi"].sum())
 
 
-def stok_gruplari_hesapla(df: pd.DataFrame) -> pd.DataFrame:
-    """Kategori bazlı stok değeri tablosu üretir."""
-    if df.empty:
-        return pd.DataFrame(columns=["Ürün Grubu", "Stok Değeri"])
-
-    temp_df = df.copy()
-    temp_df["Toplam Maliyet"] = temp_df["Stok Adedi"] * temp_df["Birim Maliyet"]
-
-    grup_df = (
-        temp_df.groupby("Kategori", dropna=False)["Toplam Maliyet"]
-        .sum()
-        .reset_index()
-        .rename(columns={"Kategori": "Ürün Grubu", "Toplam Maliyet": "Stok Değeri"})
-        .sort_values(by="Stok Değeri", ascending=False)
-    )
-
-    grup_df["Stok Değeri"] = grup_df["Stok Değeri"].apply(format_tl)
-    return grup_df
-
-
 # -----------------------------
 # CSV dosyalarını hazırla
 # -----------------------------
@@ -394,19 +375,6 @@ csv_dosyalarini_hazirla()
 # -----------------------------
 toplam_musteri_alacagi = 1_180_000
 toplam_tedarikci_borcu = 790_000
-
-yaklasan_odemeler_df = pd.DataFrame(
-    {
-        "Tedarikçi": ["Aydin Kumaş", "Moda Etiket", "Delta Aksesuar", "Mert Kargo"],
-        "Vade Tarihi": ["12.04.2026", "15.04.2026", "18.04.2026", "22.04.2026"],
-        "Tutar": [
-            format_tl(120_000),
-            format_tl(75_000),
-            format_tl(48_000),
-            format_tl(32_000),
-        ],
-    }
-)
 
 cari_df = pd.DataFrame(
     {
@@ -441,7 +409,6 @@ toplam_kayitli_urun = len(stok_df.index)
 satislar_gosterim_df = tablo_gosterime_hazirla(satislar_df, "Tutar")
 giderler_gosterim_df = tablo_gosterime_hazirla(giderler_df, "Tutar")
 stok_detay_gosterim_df = stok_tablo_gosterime_hazirla(stok_df)
-stok_gruplari_df = stok_gruplari_hesapla(stok_df)
 
 
 # -----------------------------
@@ -709,135 +676,216 @@ if st.sidebar.button("🚪 Çıkış Yap"):
 # -----------------------------
 if sayfa == "Ana Panel":
     st.title("📊 Ana Panel")
-    st.caption("Yönetim, Stok ve Karlılık Kontrol Sistemi - Dinamik Görünüm")
+    st.caption("Toptan tekstil şirketi için kâr/zarar ve depo değerleme odaklı yönetici ekranı")
 
+    # ERP dışa aktarımı gibi detaylı örnek veri
+    erp_df = pd.DataFrame(
+        {
+            "Ürün Adı": [
+                "Slim Fit Poplin Gömlek",
+                "Oduncu Ekose Gömlek",
+                "Kapitone Şişme Mont",
+                "Kaşe Kaban",
+                "Oversize Sweatshirt",
+                "Basic Kapüşonlu Sweat",
+                "Waffle Tişört",
+                "Premium Bisiklet Yaka Tişört",
+                "Likralı Klasik Pantolon",
+                "Jogger Kargo Pantolon",
+            ],
+            "Ürün Kategori": [
+                "Gömlek",
+                "Gömlek",
+                "Mont",
+                "Mont",
+                "Sweatshirt",
+                "Sweatshirt",
+                "Tişört",
+                "Tişört",
+                "Pantolon",
+                "Pantolon",
+            ],
+            "Sezon": [
+                "Kış 2025",
+                "İlkbahar 2026",
+                "Kış 2025",
+                "Kış 2025",
+                "İlkbahar 2026",
+                "Kış 2025",
+                "Yaz 2026",
+                "Yaz 2026",
+                "İlkbahar 2026",
+                "Yaz 2026",
+            ],
+            "Birim Satış Fiyatı (TL)": [720, 810, 1450, 1680, 790, 860, 420, 470, 980, 1040],
+            "Birim Üretim Maliyeti (TL)": [410, 465, 920, 1080, 510, 560, 210, 245, 620, 670],
+            "Satılan Adet": [980, 760, 410, 265, 690, 530, 1420, 1160, 420, 380],
+            "Depodaki Kalan Adet": [260, 210, 95, 60, 180, 145, 320, 280, 110, 90],
+        }
+    )
+
+    # Üst filtre satırı
+    filtre_sol, filtre_sag = st.columns(2)
+
+    tum_kategoriler = sorted(erp_df["Ürün Kategori"].dropna().unique().tolist())
+    tum_sezonlar = sorted(erp_df["Sezon"].dropna().unique().tolist())
+
+    with filtre_sol:
+        secilen_kategoriler = st.multiselect(
+            "Kategori Seçimi",
+            options=tum_kategoriler,
+            default=[]
+        )
+
+    with filtre_sag:
+        secilen_sezonlar = st.multiselect(
+            "Sezon Seçimi",
+            options=tum_sezonlar,
+            default=[]
+        )
+
+    # Filtreleme
+    filtrelenmis_df = erp_df.copy()
+
+    if secilen_kategoriler:
+        filtrelenmis_df = filtrelenmis_df[filtrelenmis_df["Ürün Kategori"].isin(secilen_kategoriler)]
+
+    if secilen_sezonlar:
+        filtrelenmis_df = filtrelenmis_df[filtrelenmis_df["Sezon"].isin(secilen_sezonlar)]
+
+    # Temel iş hesapları
+    filtrelenmis_df["Toplam Ciro (TL)"] = filtrelenmis_df["Birim Satış Fiyatı (TL)"] * filtrelenmis_df["Satılan Adet"]
+    filtrelenmis_df["Satılan Malın Maliyeti (TL)"] = filtrelenmis_df["Birim Üretim Maliyeti (TL)"] * filtrelenmis_df["Satılan Adet"]
+    filtrelenmis_df["Net Ürün Kârı (TL)"] = filtrelenmis_df["Toplam Ciro (TL)"] - filtrelenmis_df["Satılan Malın Maliyeti (TL)"]
+    filtrelenmis_df["Depodaki Malın Değeri (TL)"] = filtrelenmis_df["Birim Üretim Maliyeti (TL)"] * filtrelenmis_df["Depodaki Kalan Adet"]
+
+    toplam_ciro = filtrelenmis_df["Toplam Ciro (TL)"].sum() if not filtrelenmis_df.empty else 0
+    satilan_malin_maliyeti = filtrelenmis_df["Satılan Malın Maliyeti (TL)"].sum() if not filtrelenmis_df.empty else 0
+    net_urun_kari = filtrelenmis_df["Net Ürün Kârı (TL)"].sum() if not filtrelenmis_df.empty else 0
+    depodaki_malin_degeri = filtrelenmis_df["Depodaki Malın Değeri (TL)"].sum() if not filtrelenmis_df.empty else 0
+
+    # Kategori bazlı analiz
+    kategori_df = (
+        filtrelenmis_df.groupby("Ürün Kategori", as_index=False)[
+            ["Toplam Ciro (TL)", "Satılan Malın Maliyeti (TL)", "Depodaki Malın Değeri (TL)"]
+        ]
+        .sum()
+        if not filtrelenmis_df.empty
+        else pd.DataFrame(columns=["Ürün Kategori", "Toplam Ciro (TL)", "Satılan Malın Maliyeti (TL)", "Depodaki Malın Değeri (TL)"])
+    )
+
+    st.markdown("###")
+
+    # Üst satır kartlar
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        summary_card(
-            "Toplam Stok Maliyeti",
-            format_tl(toplam_stok_maliyeti),
-            "📦"
-        )
+        summary_card("Toplam Ciro", format_tl(toplam_ciro), "💸", "#ffffff")
 
     with col2:
-        summary_card(
-            "Toplam Müşteri Alacağı",
-            format_tl(toplam_musteri_alacagi),
-            "💰"
-        )
+        summary_card("Satılan Malın Maliyeti", format_tl(satilan_malin_maliyeti), "🏭", "#ffffff")
 
     with col3:
-        summary_card(
-            "Toplam Tedarikçi Borcu",
-            format_tl(toplam_tedarikci_borcu),
-            "🏷️"
-        )
+        summary_card("Net Ürün Kârı", format_tl(net_urun_kari), "📈", "#ffffff")
 
     with col4:
-        summary_card(
-            "Bu Ay Net Kâr",
-            format_tl(bu_ay_net_kar),
-            "📈"
-        )
+        summary_card("Depodaki Malın Değeri", format_tl(depodaki_malin_degeri), "📦", "#ffffff")
 
     st.markdown("###")
 
-    m1, m2, m3 = st.columns(3)
-    with m1:
-        st.metric("Bu Ay Satış", format_tl(bu_ay_satis))
-    with m2:
-        st.metric("Bu Ay Toplam Gider", format_tl(bu_ay_toplam_gider))
-    with m3:
-        st.metric("Bu Ay Net Kâr", format_tl(bu_ay_net_kar))
-
-    st.markdown("###")
-
+    # Orta satır grafikler
     grafik_sol, grafik_sag = st.columns(2)
 
     with grafik_sol:
-        st.subheader("Satış Trendi")
-        if satislar_df.empty or "Tarih" not in satislar_df.columns or "Tutar" not in satislar_df.columns:
-            st.info("Grafik için henüz yeterli veri yok.")
+        st.subheader("Kategori Bazlı Ciro vs Maliyet")
+
+        if kategori_df.empty:
+            st.info("Seçilen filtreler için gösterilecek veri bulunamadı.")
         else:
-            satis_grafik_df = satislar_df.copy()
-            satis_grafik_df = satis_grafik_df.dropna(subset=["Tarih"])
-            satis_grafik_df["Tutar"] = pd.to_numeric(satis_grafik_df["Tutar"], errors="coerce").fillna(0)
-
-            if satis_grafik_df.empty:
-                st.info("Grafik için henüz yeterli veri yok.")
-            else:
-                satis_grafik_df = (
-                    satis_grafik_df.groupby("Tarih", as_index=False)["Tutar"]
-                    .sum()
-                    .sort_values("Tarih")
-                )
-
-                fig_satis = px.line(
-                    satis_grafik_df,
-                    x="Tarih",
-                    y="Tutar",
-                    markers=True,
-                    title=""
-                )
-                fig_satis.update_traces(line=dict(width=3))
-                fig_satis.update_layout(
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(0,0,0,0)",
-                    margin=dict(l=10, r=10, t=10, b=10),
-                    font=dict(color="#111827"),
-                    xaxis_title="Tarih",
-                    yaxis_title="Tutar (TL)",
-                )
-                fig_satis.update_xaxes(showgrid=False)
-                fig_satis.update_yaxes(gridcolor="rgba(17,24,39,0.08)")
-                st.plotly_chart(fig_satis, use_container_width=True)
-
-    with grafik_sag:
-        st.subheader("Gider Dağılımı")
-        if giderler_df.empty or "Gider Kalemi" not in giderler_df.columns or "Tutar" not in giderler_df.columns:
-            st.info("Grafik için henüz yeterli veri yok.")
-        else:
-            gider_grafik_df = giderler_df.copy()
-            gider_grafik_df["Tutar"] = pd.to_numeric(gider_grafik_df["Tutar"], errors="coerce").fillna(0)
-            gider_grafik_df["Gider Kalemi"] = gider_grafik_df["Gider Kalemi"].fillna("Belirtilmemiş")
-
-            gider_grafik_df = (
-                gider_grafik_df.groupby("Gider Kalemi", as_index=False)["Tutar"]
-                .sum()
-                .sort_values("Tutar", ascending=False)
+            kategori_grafik_df = kategori_df.melt(
+                id_vars="Ürün Kategori",
+                value_vars=["Toplam Ciro (TL)", "Satılan Malın Maliyeti (TL)"],
+                var_name="Gösterge",
+                value_name="Tutar"
             )
 
-            if gider_grafik_df.empty:
-                st.info("Grafik için henüz yeterli veri yok.")
-            else:
-                fig_gider = px.pie(
-                    gider_grafik_df,
-                    names="Gider Kalemi",
-                    values="Tutar",
-                    hole=0.55,
-                    title=""
-                )
-                fig_gider.update_layout(
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(0,0,0,0)",
-                    margin=dict(l=10, r=10, t=10, b=10),
-                    font=dict(color="#111827"),
-                    legend_title_text="Gider Kalemi"
-                )
-                st.plotly_chart(fig_gider, use_container_width=True)
+            fig_ciro_maliyet = px.bar(
+                kategori_grafik_df,
+                x="Ürün Kategori",
+                y="Tutar",
+                color="Gösterge",
+                barmode="group",
+                text_auto=".2s"
+            )
+            fig_ciro_maliyet.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                margin=dict(l=10, r=10, t=10, b=10),
+                font=dict(color="#111827"),
+                legend_title_text="Gösterge",
+                xaxis_title="Ürün Kategori",
+                yaxis_title="Tutar (TL)"
+            )
+            fig_ciro_maliyet.update_xaxes(showgrid=False)
+            fig_ciro_maliyet.update_yaxes(gridcolor="rgba(17,24,39,0.08)")
+            st.plotly_chart(fig_ciro_maliyet, use_container_width=True)
+
+    with grafik_sag:
+        st.subheader("Depodaki Malın Değeri Dağılımı")
+
+        if kategori_df.empty:
+            st.info("Seçilen filtreler için gösterilecek veri bulunamadı.")
+        else:
+            fig_stok_deger = px.pie(
+                kategori_df,
+                names="Ürün Kategori",
+                values="Depodaki Malın Değeri (TL)",
+                hole=0.58
+            )
+            fig_stok_deger.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                margin=dict(l=10, r=10, t=10, b=10),
+                font=dict(color="#111827"),
+                legend_title_text="Kategori"
+            )
+            st.plotly_chart(fig_stok_deger, use_container_width=True)
 
     st.markdown("###")
 
-    left_col, right_col = st.columns(2)
+    # Alt satır detay tablo
+    st.subheader("Ürün Bazlı Karlılık ve Depo Değerleme Detayı")
 
-    with left_col:
-        st.subheader("Yaklaşan Ödemeler")
-        st.dataframe(yaklasan_odemeler_df, use_container_width=True, hide_index=True)
+    if filtrelenmis_df.empty:
+        st.info("Seçilen filtreler için tablo verisi bulunamadı.")
+    else:
+        detay_df = filtrelenmis_df[
+            [
+                "Ürün Adı",
+                "Ürün Kategori",
+                "Sezon",
+                "Birim Satış Fiyatı (TL)",
+                "Birim Üretim Maliyeti (TL)",
+                "Satılan Adet",
+                "Depodaki Kalan Adet",
+                "Toplam Ciro (TL)",
+                "Satılan Malın Maliyeti (TL)",
+                "Net Ürün Kârı (TL)",
+                "Depodaki Malın Değeri (TL)",
+            ]
+        ].copy()
 
-    with right_col:
-        st.subheader("En Çok Para Bağlanan Stok Grupları")
-        st.dataframe(stok_gruplari_df, use_container_width=True, hide_index=True)
+        for kolon in [
+            "Birim Satış Fiyatı (TL)",
+            "Birim Üretim Maliyeti (TL)",
+            "Toplam Ciro (TL)",
+            "Satılan Malın Maliyeti (TL)",
+            "Net Ürün Kârı (TL)",
+            "Depodaki Malın Değeri (TL)",
+        ]:
+            detay_df[kolon] = detay_df[kolon].apply(format_tl)
+
+        st.dataframe(detay_df, use_container_width=True, hide_index=True)
 
 elif sayfa == "Stok Değerleme":
     st.title("📦 Stok Değerleme")
