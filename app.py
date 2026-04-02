@@ -4,7 +4,6 @@ from datetime import date
 
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 import requests
 import streamlit as st
 
@@ -18,6 +17,34 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+
+# -----------------------------
+# Session state başlangıçları
+# -----------------------------
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
+
+if "username" not in st.session_state:
+    st.session_state["username"] = ""
+
+if "role" not in st.session_state:
+    st.session_state["role"] = ""
+
+if "api_veri_modu" not in st.session_state:
+    st.session_state["api_veri_modu"] = False
+
+if "api_son_guncelleme" not in st.session_state:
+    st.session_state["api_son_guncelleme"] = ""
+
+if "log_gecmisi" not in st.session_state:
+    st.session_state["log_gecmisi"] = []
+
+if "son_barkod_log" not in st.session_state:
+    st.session_state["son_barkod_log"] = ""
+
+if "son_maliyet_log" not in st.session_state:
+    st.session_state["son_maliyet_log"] = ""
 
 
 # -----------------------------
@@ -37,6 +64,7 @@ ADMIN_SAYFALARI = [
     "Veri Girişi",
     "Maliyet Simülatörü",
     "Depo & Barkod Radarı",
+    "Sistem Geçmişi",
 ]
 
 STAFF_SAYFALARI = [
@@ -44,186 +72,6 @@ STAFF_SAYFALARI = [
     "Stok Değerleme",
     "Depo & Barkod Radarı",
 ]
-
-if "logged_in" not in st.session_state:
-    st.session_state["logged_in"] = False
-
-if "username" not in st.session_state:
-    st.session_state["username"] = ""
-
-if "role" not in st.session_state:
-    st.session_state["role"] = ""
-
-if "api_veri_modu" not in st.session_state:
-    st.session_state["api_veri_modu"] = False
-
-if "api_son_guncelleme" not in st.session_state:
-    st.session_state["api_son_guncelleme"] = ""
-
-
-def giris_ekrani_goster():
-    """Sadece giriş ekranını gösterir."""
-    st.markdown(
-        """
-        <style>
-            .stApp {
-                background: linear-gradient(135deg, #f4f5f7 0%, #eef2f7 100%);
-            }
-
-            #MainMenu, footer, header,
-            section[data-testid="stSidebar"],
-            [data-testid="collapsedControl"] {
-                display: none !important;
-            }
-
-            .block-container {
-                padding-top: 4rem;
-                padding-bottom: 2rem;
-                max-width: 1200px;
-            }
-
-            .giris-karti {
-                background: rgba(255, 255, 255, 0.96);
-                padding: 34px 28px 28px 28px;
-                border-radius: 28px;
-                border: none;
-                box-shadow: 0 24px 64px rgba(15, 23, 42, 0.10);
-                backdrop-filter: blur(10px);
-            }
-
-            .giris-baslik {
-                font-size: 32px;
-                font-weight: 800;
-                color: #111827;
-                text-align: center;
-                margin-bottom: 8px;
-                letter-spacing: -0.02em;
-            }
-
-            .giris-aciklama {
-                font-size: 15px;
-                color: #6b7280;
-                text-align: center;
-                margin-bottom: 24px;
-            }
-
-            input, textarea, select {
-                color: #111827 !important;
-                background-color: #ffffff !important;
-                -webkit-text-fill-color: #111827 !important;
-                caret-color: #111827 !important;
-            }
-
-            input::placeholder,
-            textarea::placeholder,
-            select::placeholder {
-                color: #6b7280 !important;
-                -webkit-text-fill-color: #6b7280 !important;
-                opacity: 1 !important;
-            }
-
-            div[data-baseweb="input"] > div,
-            div[data-baseweb="textarea"] > div,
-            div[data-baseweb="select"] > div,
-            .stDateInput > div > div {
-                border-radius: 16px !important;
-                border: 1px solid rgba(15, 23, 42, 0.08) !important;
-                background: #ffffff !important;
-                box-shadow: none !important;
-            }
-
-            div[data-baseweb="input"] input,
-            div[data-baseweb="textarea"] textarea,
-            div[data-baseweb="select"] input,
-            .stDateInput input {
-                color: #111827 !important;
-                background-color: #ffffff !important;
-                -webkit-text-fill-color: #111827 !important;
-                caret-color: #111827 !important;
-            }
-
-            div[data-baseweb="input"] input::placeholder,
-            div[data-baseweb="textarea"] textarea::placeholder,
-            div[data-baseweb="select"] input::placeholder,
-            .stDateInput input::placeholder {
-                color: #6b7280 !important;
-                -webkit-text-fill-color: #6b7280 !important;
-                opacity: 1 !important;
-            }
-
-            [data-testid="stFormSubmitButton"] > button {
-                width: 100%;
-                border-radius: 16px;
-                border: none;
-                background: linear-gradient(135deg, #111827 0%, #374151 100%);
-                color: #ffffff;
-                font-weight: 700;
-                padding: 0.82rem 1rem;
-                box-shadow: 0 10px 22px rgba(17, 24, 39, 0.18);
-                transition: all 0.2s ease;
-            }
-
-            [data-testid="stFormSubmitButton"] > button:hover {
-                transform: translateY(-1px);
-                box-shadow: 0 14px 28px rgba(17, 24, 39, 0.24);
-                background: linear-gradient(135deg, #0f172a 0%, #1f2937 100%);
-            }
-
-            .giris-alti-not {
-                margin-top: 20px;
-                text-align: center;
-                color: #9ca3af;
-                font-size: 13px;
-            }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-
-    bos1, orta, bos2 = st.columns([1.2, 1, 1.2])
-
-    with orta:
-        st.markdown('<div class="giris-karti">', unsafe_allow_html=True)
-        st.markdown('<div class="giris-baslik">Giriş Yap</div>', unsafe_allow_html=True)
-        st.markdown(
-            '<div class="giris-aciklama">Yönetim, Stok ve Karlılık Kontrol Sistemi</div>',
-            unsafe_allow_html=True
-        )
-
-        with st.form("giris_formu", clear_on_submit=False):
-            kullanici_adi = st.text_input("Kullanıcı Adı")
-            sifre = st.text_input("Şifre", type="password")
-            giris_buton = st.form_submit_button("Giriş Yap")
-
-            if giris_buton:
-                kullanici = GECERLI_KULLANICILAR.get(kullanici_adi)
-
-                if kullanici and kullanici["password"] == sifre:
-                    st.session_state["logged_in"] = True
-                    st.session_state["username"] = kullanici_adi
-                    st.session_state["role"] = kullanici["role"]
-                    st.rerun()
-                else:
-                    st.error("Kullanıcı adı veya şifre hatalı.")
-
-        st.markdown(
-            '<div class="giris-alti-not">Yetkisiz erişim engellenmiştir.</div>',
-            unsafe_allow_html=True
-        )
-        st.markdown("</div>", unsafe_allow_html=True)
-
-
-if not st.session_state["logged_in"]:
-    giris_ekrani_goster()
-    st.stop()
-
-
-# -----------------------------
-# Dosya yolları
-# -----------------------------
-SATISLAR_DOSYA = "satislar.csv"
-GIDERLER_DOSYA = "giderler.csv"
-STOK_DOSYA = "stok.csv"
 
 
 # -----------------------------
@@ -250,17 +98,30 @@ def summary_card(title: str, value: str, icon: str, bg_color: str = "#ffffff"):
     )
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
+def log_ekle(kullanici, islem_detayi):
+    zaman = pd.Timestamp.now().strftime("%d.%m.%Y %H:%M:%S")
+    st.session_state["log_gecmisi"].append(
+        {
+            "Tarih-Saat": zaman,
+            "Kullanıcı": kullanici,
+            "İşlem": islem_detayi,
+        }
+    )
+
+
+@st.cache_data(ttl=900, show_spinner=False)
 def usd_try_kuru_getir():
     fallback_rate = 32.50
+    cekilme_zamani = pd.Timestamp.now().strftime("%d.%m.%Y %H:%M:%S")
+
     try:
-        response = requests.get("https://api.exchangerate-api.com/v4/latest/USD", timeout=5)
+        response = requests.get("https://api.exchangerate-api.com/v4/latest/USD", timeout=6)
         response.raise_for_status()
         data = response.json()
         rate = float(data["rates"]["TRY"])
-        return rate, "Canlı kur"
+        return rate, "Canlı kur", cekilme_zamani
     except Exception:
-        return fallback_rate, "Yedek kur"
+        return fallback_rate, "Yedek kur", cekilme_zamani
 
 
 def csv_dosyalarini_hazirla():
@@ -380,14 +241,156 @@ def stok_toplam_adet_hesapla(df: pd.DataFrame) -> int:
 
 
 # -----------------------------
-# CSV dosyalarını hazırla
+# Giriş ekranı
+# -----------------------------
+def giris_ekrani_goster():
+    st.markdown(
+        """
+        <style>
+            .stApp {
+                background: linear-gradient(135deg, #f4f5f7 0%, #eef2f7 100%);
+            }
+
+            #MainMenu, footer, header,
+            section[data-testid="stSidebar"],
+            [data-testid="collapsedControl"] {
+                display: none !important;
+            }
+
+            .block-container {
+                padding-top: 4rem;
+                padding-bottom: 2rem;
+                max-width: 1200px;
+            }
+
+            .giris-karti {
+                background: rgba(255, 255, 255, 0.96);
+                padding: 34px 28px 28px 28px;
+                border-radius: 28px;
+                border: none;
+                box-shadow: 0 24px 64px rgba(15, 23, 42, 0.10);
+                backdrop-filter: blur(10px);
+            }
+
+            .giris-baslik {
+                font-size: 32px;
+                font-weight: 800;
+                color: #111827;
+                text-align: center;
+                margin-bottom: 8px;
+                letter-spacing: -0.02em;
+            }
+
+            .giris-aciklama {
+                font-size: 15px;
+                color: #6b7280;
+                text-align: center;
+                margin-bottom: 24px;
+            }
+
+            input, textarea, select {
+                color: #111827 !important;
+                background-color: #ffffff !important;
+                -webkit-text-fill-color: #111827 !important;
+                caret-color: #111827 !important;
+            }
+
+            input::placeholder,
+            textarea::placeholder,
+            select::placeholder {
+                color: #6b7280 !important;
+                -webkit-text-fill-color: #6b7280 !important;
+                opacity: 1 !important;
+            }
+
+            div[data-baseweb="input"] > div {
+                border-radius: 14px !important;
+                border: 1px solid rgba(15, 23, 42, 0.08) !important;
+                background: #ffffff !important;
+                box-shadow: none !important;
+            }
+
+            [data-testid="stFormSubmitButton"] > button {
+                width: 100%;
+                border-radius: 16px;
+                border: none;
+                background: linear-gradient(135deg, #111827 0%, #374151 100%);
+                color: #ffffff;
+                font-weight: 700;
+                padding: 0.82rem 1rem;
+                box-shadow: 0 10px 22px rgba(17, 24, 39, 0.18);
+                transition: all 0.2s ease;
+            }
+
+            [data-testid="stFormSubmitButton"] > button:hover {
+                transform: translateY(-1px);
+                box-shadow: 0 14px 28px rgba(17, 24, 39, 0.24);
+                background: linear-gradient(135deg, #0f172a 0%, #1f2937 100%);
+            }
+
+            .giris-alti-not {
+                margin-top: 20px;
+                text-align: center;
+                color: #9ca3af;
+                font-size: 13px;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+    bos1, orta, bos2 = st.columns([1.2, 1, 1.2])
+
+    with orta:
+        st.markdown('<div class="giris-karti">', unsafe_allow_html=True)
+        st.markdown('<div class="giris-baslik">Giriş Yap</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="giris-aciklama">Yönetim, Stok ve Karlılık Kontrol Sistemi</div>',
+            unsafe_allow_html=True
+        )
+
+        with st.form("giris_formu", clear_on_submit=False):
+            kullanici_adi = st.text_input("Kullanıcı Adı")
+            sifre = st.text_input("Şifre", type="password")
+            giris_buton = st.form_submit_button("Giriş Yap")
+
+            if giris_buton:
+                kullanici = GECERLI_KULLANICILAR.get(kullanici_adi)
+
+                if kullanici and kullanici["password"] == sifre:
+                    st.session_state["logged_in"] = True
+                    st.session_state["username"] = kullanici_adi
+                    st.session_state["role"] = kullanici["role"]
+                    log_ekle(kullanici_adi, "Başarılı giriş yaptı.")
+                    st.rerun()
+                else:
+                    st.error("Kullanıcı adı veya şifre hatalı.")
+
+        st.markdown(
+            '<div class="giris-alti-not">Yetkisiz erişim engellenmiştir.</div>',
+            unsafe_allow_html=True
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
+
+
+if not st.session_state["logged_in"]:
+    giris_ekrani_goster()
+    st.stop()
+
+
+# -----------------------------
+# Dosya yolları
+# -----------------------------
+SATISLAR_DOSYA = "satislar.csv"
+GIDERLER_DOSYA = "giderler.csv"
+STOK_DOSYA = "stok.csv"
+
+
+# -----------------------------
+# CSV hazırlık ve veri okuma
 # -----------------------------
 csv_dosyalarini_hazirla()
 
-
-# -----------------------------
-# Dinamik veriler
-# -----------------------------
 satislar_df = satislari_oku()
 giderler_df = giderleri_oku()
 stok_df = stok_oku()
@@ -651,8 +654,9 @@ st.sidebar.caption(f"Rol: {st.session_state.get('role', '')}")
 st.sidebar.markdown("---")
 st.sidebar.markdown("<div style='height: 150px;'></div>", unsafe_allow_html=True)
 if st.sidebar.button("🚪 Çıkış Yap"):
-    for key in list(st.session_state.keys()):
-        del st.session_state[key]
+    for key in ["logged_in", "username", "role", "api_veri_modu", "api_son_guncelleme", "son_barkod_log", "son_maliyet_log"]:
+        if key in st.session_state:
+            del st.session_state[key]
     st.rerun()
 
 
@@ -676,9 +680,9 @@ if sayfa == "Ana Panel":
         st.success("Dış sistem API bağlantısı başarılı. Canlı veri okundu.")
 
     with api_sag:
-        if st.session_state["api_veri_modu"]:
+        if st.session_state.get("api_veri_modu", False):
             st.info(
-                f"Aktif veri kaynağı: Dış satış sistemi API • Son güncelleme: {st.session_state['api_son_guncelleme']}"
+                f"Aktif veri kaynağı: Dış satış sistemi API • Son güncelleme: {st.session_state.get('api_son_guncelleme', '-')}"
             )
 
     gerekli_kolonlar = [
@@ -846,7 +850,7 @@ if sayfa == "Ana Panel":
             st.info("Lütfen dosya biçiminizi kontrol edin veya örnek şablonu kullanın.")
             erp_df = demo_erp_df.copy()
             veri_kaynagi_demo = True
-    elif st.session_state["api_veri_modu"]:
+    elif st.session_state.get("api_veri_modu", False):
         erp_df = api_erp_df.copy()
         veri_kaynagi_demo = False
 
@@ -859,18 +863,10 @@ if sayfa == "Ana Panel":
     tum_sezonlar = sorted(erp_df["Sezon"].dropna().unique().tolist())
 
     with filtre_sol:
-        secilen_kategoriler = st.multiselect(
-            "Kategori Seçimi",
-            options=tum_kategoriler,
-            default=[]
-        )
+        secilen_kategoriler = st.multiselect("Kategori Seçimi", options=tum_kategoriler, default=[])
 
     with filtre_sag:
-        secilen_sezonlar = st.multiselect(
-            "Sezon Seçimi",
-            options=tum_sezonlar,
-            default=[]
-        )
+        secilen_sezonlar = st.multiselect("Sezon Seçimi", options=tum_sezonlar, default=[])
 
     filtrelenmis_df = erp_df.copy()
 
@@ -1152,13 +1148,7 @@ elif sayfa == "Veri Girişi":
             satis_tarih = st.date_input("Tarih", value=date.today(), key="satis_tarih")
             satis_musteri = st.text_input("Müşteri", key="satis_musteri")
             satis_siparis_no = st.text_input("Sipariş No", key="satis_siparis_no")
-            satis_tutar = st.number_input(
-                "Tutar",
-                min_value=0.0,
-                step=100.0,
-                format="%.2f",
-                key="satis_tutar"
-            )
+            satis_tutar = st.number_input("Tutar", min_value=0.0, step=100.0, format="%.2f", key="satis_tutar")
 
             satis_submit = st.form_submit_button("Satışı Kaydet")
 
@@ -1189,13 +1179,7 @@ elif sayfa == "Veri Girişi":
         with st.form("yeni_gider_formu", clear_on_submit=True):
             gider_tarih = st.date_input("Tarih", value=date.today(), key="gider_tarih")
             gider_kalemi = st.text_input("Gider Kalemi", key="gider_kalemi")
-            gider_tutar = st.number_input(
-                "Tutar",
-                min_value=0.0,
-                step=100.0,
-                format="%.2f",
-                key="gider_tutar"
-            )
+            gider_tutar = st.number_input("Tutar", min_value=0.0, step=100.0, format="%.2f", key="gider_tutar")
 
             gider_submit = st.form_submit_button("Gideri Kaydet")
 
@@ -1226,19 +1210,8 @@ elif sayfa == "Veri Girişi":
             urun_kodu = st.text_input("Ürün Kodu", key="urun_kodu")
             urun_adi = st.text_input("Ürün Adı", key="urun_adi")
             kategori = st.text_input("Kategori", key="kategori")
-            stok_adedi = st.number_input(
-                "Stok Adedi",
-                min_value=0,
-                step=1,
-                key="stok_adedi"
-            )
-            birim_maliyet = st.number_input(
-                "Birim Maliyet",
-                min_value=0.0,
-                step=10.0,
-                format="%.2f",
-                key="birim_maliyet"
-            )
+            stok_adedi = st.number_input("Stok Adedi", min_value=0, step=1, key="stok_adedi")
+            birim_maliyet = st.number_input("Birim Maliyet", min_value=0.0, step=10.0, format="%.2f", key="birim_maliyet")
 
             stok_submit = st.form_submit_button("Ürünü / Stoğu Kaydet")
 
@@ -1272,13 +1245,14 @@ elif sayfa == "Maliyet Simülatörü":
     st.title("🧮 Maliyet Simülatörü")
     st.caption("İleri seviye tekstil maliyetlendirme ekranı")
 
-    usd_try_kuru, kur_kaynagi = usd_try_kuru_getir()
+    usd_try_kuru, kur_kaynagi, kur_cekilis_saati = usd_try_kuru_getir()
 
-    kur_sol, kur_sag = st.columns([1, 2])
+    kur_sol, kur_orta, kur_sag = st.columns([1, 1, 1.4])
 
     with kur_sol:
         st.metric("Canlı USD / TRY Kuru", format_decimal(usd_try_kuru, 4))
-
+    with kur_orta:
+        st.metric("Kur Çekilme Saati", kur_cekilis_saati)
     with kur_sag:
         if kur_kaynagi == "Canlı kur":
             st.success("Kur bilgisi canlı kaynaktan alındı.")
@@ -1287,13 +1261,23 @@ elif sayfa == "Maliyet Simülatörü":
 
     st.markdown("###")
 
-    bilgi_col, usd_col, tl_col = st.columns(3)
+    gorsel_col, bilgi_col = st.columns([1, 2])
+
+    with gorsel_col:
+        urun_gorseli = st.file_uploader("Model / Ürün Görseli Yükle", type=["png", "jpg", "jpeg"])
 
     with bilgi_col:
-        st.subheader("Ürün Bilgileri")
-        urun_cinsi = st.text_input("Ürün Cinsi", placeholder="Örn: Gömlek / Mont / Tişört")
-        kumas_rengi = st.text_input("Kumaş Rengi", placeholder="Örn: Siyah / Haki / Ekru")
-        gramaj = st.text_input("Gramaj", placeholder="Örn: 220 GSM")
+        bilgi1, bilgi2, bilgi3 = st.columns(3)
+        with bilgi1:
+            urun_cinsi = st.text_input("Ürün Cinsi", placeholder="Örn: Gömlek / Mont / Tişört")
+        with bilgi2:
+            kumas_rengi = st.text_input("Kumaş Rengi", placeholder="Örn: Siyah / Haki / Ekru")
+        with bilgi3:
+            gramaj = st.text_input("Gramaj", placeholder="Örn: 220 GSM")
+
+    st.markdown("###")
+
+    usd_col, tl_col = st.columns(2)
 
     with usd_col:
         st.subheader("USD Bazlı Maliyetler")
@@ -1315,16 +1299,46 @@ elif sayfa == "Maliyet Simülatörü":
 
     st.markdown("###")
 
-    kart1, kart2, kart3 = st.columns([1, 1, 1.4])
+    sonuc_sol, sonuc_sag = st.columns([1, 1.3])
 
-    with kart1:
-        summary_card("Toplam USD Bazlı Maliyet", f"${format_decimal(toplam_usd_maliyeti, 2)}", "💵", "#ffffff")
-    with kart2:
-        summary_card("Toplam TL Bazlı Maliyet", format_tl(toplam_try_maliyeti), "🏷️", "#ffffff")
-    with kart3:
+    with sonuc_sol:
+        if urun_gorseli is not None:
+            st.image(urun_gorseli, use_container_width=True)
+        else:
+            st.info("Ürün görseli yüklerseniz burada gösterilir.")
+
+    with sonuc_sag:
         summary_card("Toplam Üretim Maliyeti", format_tl(toplam_maliyet), "🏭", "#eef6ff")
+        st.markdown("###")
+        mini1, mini2 = st.columns(2)
+        with mini1:
+            summary_card("Toplam USD Bazlı Maliyet", f"${format_decimal(toplam_usd_maliyeti, 2)}", "💵", "#ffffff")
+        with mini2:
+            summary_card("Toplam TL Bazlı Maliyet", format_tl(toplam_try_maliyeti), "🏷️", "#ffffff")
+
+    maliyet_imza = str(
+        (
+            urun_cinsi,
+            kumas_rengi,
+            gramaj,
+            round(ip_maliyeti_usd, 2),
+            round(boya_maliyeti_usd, 2),
+            round(orme_maliyeti_usd, 2),
+            round(fason_dikim_tl, 2),
+            round(aksesuar_tl, 2),
+            round(baski_nakis_tl, 2),
+            round(paketleme_tl, 2),
+            round(toplam_maliyet, 2),
+        )
+    )
+
+    if st.session_state.get("son_maliyet_log") != maliyet_imza:
+        urun_adi_log = urun_cinsi if urun_cinsi else "belirtilmeyen ürün"
+        log_ekle(st.session_state.get("username", "bilinmiyor"), f"Maliyet hesapladı: {urun_adi_log} için toplam maliyet {format_tl(toplam_maliyet)}.")
+        st.session_state["son_maliyet_log"] = maliyet_imza
 
     st.markdown("###")
+    st.subheader("Hesaplama Özeti")
 
     ozet_df = pd.DataFrame(
         {
@@ -1387,20 +1401,20 @@ elif sayfa == "Depo & Barkod Radarı":
         }
     )
 
-    barkod_girdisi = st.text_input(
-        "Barkod Okut veya Gir",
-        placeholder="Örn: 1001"
-    ).strip()
-
+    barkod_girdisi = st.text_input("Barkod Okut veya Gir", placeholder="Örn: 1001").strip()
     kamera_gorseli = st.camera_input("📸 Kamerayı Aç ve Barkodu Okut")
 
     aktif_barkod = ""
+    barkod_kaynagi = ""
+
     if barkod_girdisi:
         aktif_barkod = barkod_girdisi
+        barkod_kaynagi = "manuel"
     elif kamera_gorseli is not None:
         with st.spinner("Görüntü işleniyor, barkod çözülüyor..."):
             time.sleep(1)
         aktif_barkod = "1002"
+        barkod_kaynagi = "kamera"
         st.success(f"Kamera görüntüsünden barkod çözüldü: {aktif_barkod}")
 
     st.markdown("###")
@@ -1412,6 +1426,14 @@ elif sayfa == "Depo & Barkod Radarı":
             st.error("Ürün bulunamadı. Barkodu kontrol edin.")
         else:
             urun = bulunan_df.iloc[0]
+
+            barkod_log_imza = f"{aktif_barkod}|{barkod_kaynagi}"
+            if st.session_state.get("son_barkod_log") != barkod_log_imza:
+                if barkod_kaynagi == "kamera":
+                    log_ekle(st.session_state.get("username", "bilinmiyor"), f"{aktif_barkod} barkodunu kamera ile okuttu.")
+                else:
+                    log_ekle(st.session_state.get("username", "bilinmiyor"), f"{aktif_barkod} barkodunu manuel girdi.")
+                st.session_state["son_barkod_log"] = barkod_log_imza
 
             st.markdown(
                 f"""
@@ -1458,3 +1480,22 @@ elif sayfa == "Depo & Barkod Radarı":
     st.markdown("###")
     st.subheader("Depo Yerleşim Referansı")
     st.dataframe(barkod_db, use_container_width=True, hide_index=True)
+
+elif sayfa == "Sistem Geçmişi":
+    st.title("🕘 Sistem Geçmişi")
+    st.caption("Yönetici işlem geçmişi ekranı")
+
+    if st.session_state.get("role") != "admin":
+        st.error("Bu sayfayı görüntüleme yetkiniz yok.")
+    else:
+        loglar = st.session_state.get("log_gecmisi", [])
+
+        if not loglar:
+            st.info("Henüz sistem geçmişinde kayıt yok.")
+        else:
+            log_df = pd.DataFrame(loglar)
+            log_df = log_df.iloc[::-1].reset_index(drop=True)
+            st.dataframe(log_df, use_container_width=True, hide_index=True)
+
+elif sayfa == "Cari":
+    pass
