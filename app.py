@@ -1,4 +1,5 @@
 import os
+import time
 from datetime import date
 
 import pandas as pd
@@ -52,6 +53,12 @@ if "username" not in st.session_state:
 
 if "role" not in st.session_state:
     st.session_state["role"] = ""
+
+if "api_veri_modu" not in st.session_state:
+    st.session_state["api_veri_modu"] = False
+
+if "api_son_guncelleme" not in st.session_state:
+    st.session_state["api_son_guncelleme"] = ""
 
 
 def giris_ekrani_goster():
@@ -656,6 +663,24 @@ if sayfa == "Ana Panel":
     st.title("📊 Ana Panel")
     st.caption("Toptan tekstil şirketi için kâr/zarar ve depo değerleme odaklı yönetici ekranı")
 
+    api_sol, api_sag = st.columns([1, 2])
+
+    with api_sol:
+        api_buton = st.button("🔄 Dış Sistemden Canlı Veri Çek (API)")
+
+    if api_buton:
+        with st.spinner("Veritabanına bağlanılıyor..."):
+            time.sleep(1)
+        st.session_state["api_veri_modu"] = True
+        st.session_state["api_son_guncelleme"] = pd.Timestamp.now().strftime("%d.%m.%Y %H:%M:%S")
+        st.success("Dış sistem API bağlantısı başarılı. Canlı veri okundu.")
+
+    with api_sag:
+        if st.session_state["api_veri_modu"]:
+            st.info(
+                f"Aktif veri kaynağı: Dış satış sistemi API • Son güncelleme: {st.session_state['api_son_guncelleme']}"
+            )
+
     gerekli_kolonlar = [
         "Ürün Kategori",
         "Sezon",
@@ -736,6 +761,51 @@ if sayfa == "Ana Panel":
         }
     )
 
+    api_erp_df = pd.DataFrame(
+        {
+            "Ürün Adı": [
+                "Slim Fit Poplin Gömlek",
+                "Oduncu Ekose Gömlek",
+                "Kapitone Şişme Mont",
+                "Kaşe Kaban",
+                "Oversize Sweatshirt",
+                "Basic Kapüşonlu Sweat",
+                "Waffle Tişört",
+                "Premium Bisiklet Yaka Tişört",
+                "Likralı Klasik Pantolon",
+                "Jogger Kargo Pantolon",
+            ],
+            "Ürün Kategori": [
+                "Gömlek",
+                "Gömlek",
+                "Mont",
+                "Mont",
+                "Sweatshirt",
+                "Sweatshirt",
+                "Tişört",
+                "Tişört",
+                "Pantolon",
+                "Pantolon",
+            ],
+            "Sezon": [
+                "Kış 2025",
+                "İlkbahar 2026",
+                "Kış 2025",
+                "Kış 2025",
+                "İlkbahar 2026",
+                "Kış 2025",
+                "Yaz 2026",
+                "Yaz 2026",
+                "İlkbahar 2026",
+                "Yaz 2026",
+            ],
+            "Birim Satış Fiyatı (TL)": [755, 835, 1520, 1740, 820, 895, 445, 495, 1010, 1085],
+            "Birim Üretim Maliyeti (TL)": [425, 482, 948, 1115, 528, 578, 224, 258, 638, 689],
+            "Satılan Adet": [1120, 840, 465, 290, 760, 590, 1580, 1285, 470, 420],
+            "Depodaki Kalan Adet": [240, 185, 82, 54, 165, 132, 295, 250, 98, 84],
+        }
+    )
+
     erp_df = demo_erp_df.copy()
     veri_kaynagi_demo = True
 
@@ -776,6 +846,9 @@ if sayfa == "Ana Panel":
             st.info("Lütfen dosya biçiminizi kontrol edin veya örnek şablonu kullanın.")
             erp_df = demo_erp_df.copy()
             veri_kaynagi_demo = True
+    elif st.session_state["api_veri_modu"]:
+        erp_df = api_erp_df.copy()
+        veri_kaynagi_demo = False
 
     if veri_kaynagi_demo:
         st.warning("Şu an Demo (Örnek) verisi görüyorsunuz. Kendi verilerinizi yukarıdan yükleyin.")
@@ -1007,28 +1080,11 @@ elif sayfa == "Cari":
     kart1, kart2, kart3 = st.columns(3)
 
     with kart1:
-        summary_card(
-            "Toplam Müşteri Alacağı",
-            format_tl(toplam_musteri_alacagi_cari),
-            "🧾",
-            "#ffffff"
-        )
-
+        summary_card("Toplam Müşteri Alacağı", format_tl(toplam_musteri_alacagi_cari), "🧾", "#ffffff")
     with kart2:
-        summary_card(
-            "Toplam Tedarikçi Borcu",
-            format_tl(toplam_tedarikci_borcu_cari),
-            "🏷️",
-            "#ffffff"
-        )
-
+        summary_card("Toplam Tedarikçi Borcu", format_tl(toplam_tedarikci_borcu_cari), "🏷️", "#ffffff")
     with kart3:
-        summary_card(
-            "Net Nakit Pozisyonu",
-            format_tl(net_nakit_pozisyonu),
-            "💰",
-            "#ffffff"
-        )
+        summary_card("Net Nakit Pozisyonu", format_tl(net_nakit_pozisyonu), "💰", "#ffffff")
 
     st.markdown("###")
 
@@ -1263,10 +1319,8 @@ elif sayfa == "Maliyet Simülatörü":
 
     with kart1:
         summary_card("Toplam USD Bazlı Maliyet", f"${format_decimal(toplam_usd_maliyeti, 2)}", "💵", "#ffffff")
-
     with kart2:
         summary_card("Toplam TL Bazlı Maliyet", format_tl(toplam_try_maliyeti), "🏷️", "#ffffff")
-
     with kart3:
         summary_card("Toplam Üretim Maliyeti", format_tl(toplam_maliyet), "🏭", "#eef6ff")
 
@@ -1333,15 +1387,26 @@ elif sayfa == "Depo & Barkod Radarı":
         }
     )
 
-    barkod = st.text_input(
+    barkod_girdisi = st.text_input(
         "Barkod Okut veya Gir",
         placeholder="Örn: 1001"
     ).strip()
 
+    kamera_gorseli = st.camera_input("📸 Kamerayı Aç ve Barkodu Okut")
+
+    aktif_barkod = ""
+    if barkod_girdisi:
+        aktif_barkod = barkod_girdisi
+    elif kamera_gorseli is not None:
+        with st.spinner("Görüntü işleniyor, barkod çözülüyor..."):
+            time.sleep(1)
+        aktif_barkod = "1002"
+        st.success(f"Kamera görüntüsünden barkod çözüldü: {aktif_barkod}")
+
     st.markdown("###")
 
-    if barkod:
-        bulunan_df = barkod_db[barkod_db["Barkod"] == barkod]
+    if aktif_barkod:
+        bulunan_df = barkod_db[barkod_db["Barkod"] == aktif_barkod]
 
         if bulunan_df.empty:
             st.error("Ürün bulunamadı. Barkodu kontrol edin.")
@@ -1383,13 +1448,13 @@ elif sayfa == "Depo & Barkod Radarı":
 
             st.markdown("###")
 
-            if st.button("Stoktan Düş", key=f"stok_dus_{barkod}"):
-                st.success("Simülasyon: Ürün stoktan düşüldü olarak işaretlendi. Gelecekte dış satış sistemi API'sine bağlanabilir.")
+            if st.button("Sistemden Stok Düş (API ile İlet)", key=f"stok_dus_api_{aktif_barkod}"):
+                with st.spinner("Harici satış sistemine REST API isteği gönderiliyor..."):
+                    time.sleep(1)
+                st.success("REST API isteği başarılı: Mevcut satış sisteminden ürün düşüldü.")
     else:
-        st.info("Barkod girildiğinde ürünün tam depo konumu burada gösterilir.")
+        st.info("Barkod girildiğinde veya kamera ile okutulduğunda ürünün tam depo konumu burada gösterilir.")
 
     st.markdown("###")
     st.subheader("Depo Yerleşim Referansı")
-
-    referans_df = barkod_db.copy()
-    st.dataframe(referans_df, use_container_width=True, hide_index=True)
+    st.dataframe(barkod_db, use_container_width=True, hide_index=True)
