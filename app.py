@@ -4,7 +4,6 @@ import os
 import sqlite3
 import time
 from contextlib import contextmanager
-from datetime import date
 
 import pandas as pd
 import plotly.express as px
@@ -16,6 +15,22 @@ import streamlit as st
 # Sabitler
 # -----------------------------
 DB_NAME = "baros_erp.db"
+TURKEY_TZ = "Europe/Istanbul"
+
+
+# -----------------------------
+# Zaman yardımcıları
+# -----------------------------
+def now_tr() -> pd.Timestamp:
+    return pd.Timestamp.now(tz=TURKEY_TZ)
+
+
+def today_tr_date():
+    return now_tr().date()
+
+
+def tr_datetime_string() -> str:
+    return now_tr().strftime("%d.%m.%Y %H:%M:%S")
 
 
 # -----------------------------
@@ -41,6 +56,9 @@ if "username" not in st.session_state:
 if "role" not in st.session_state:
     st.session_state["role"] = ""
 
+if "beni_hatirla" not in st.session_state:
+    st.session_state["beni_hatirla"] = True
+
 if "api_veri_modu" not in st.session_state:
     st.session_state["api_veri_modu"] = False
 
@@ -58,13 +76,8 @@ if "son_maliyet_log" not in st.session_state:
 
 
 # -----------------------------
-# Kimlik doğrulama / roller
+# Roller
 # -----------------------------
-GECERLI_KULLANICILAR = {
-    "patron": {"password": "baros2026", "role": "admin"},
-    "depo": {"password": "depo123", "role": "staff"},
-}
-
 ADMIN_SAYFALARI = [
     "Ana Panel",
     "Stok Değerleme",
@@ -146,6 +159,48 @@ def init_db():
             )
             """
         )
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS kullanicilar (
+                kullanici_adi TEXT PRIMARY KEY,
+                sifre TEXT,
+                rol TEXT
+            )
+            """
+        )
+
+        cursor.execute("SELECT COUNT(*) FROM kullanicilar")
+        kullanici_sayisi = cursor.fetchone()[0]
+
+        if kullanici_sayisi == 0:
+            cursor.executemany(
+                """
+                INSERT INTO kullanicilar (kullanici_adi, sifre, rol)
+                VALUES (?, ?, ?)
+                """,
+                [
+                    ("patron", "baros2026", "admin"),
+                    ("depo", "depo123", "staff"),
+                ]
+            )
+
+
+def kullanici_dogrula(kullanici_adi: str, sifre: str):
+    with get_db_connection() as conn:
+        cursor = conn.execute(
+            """
+            SELECT kullanici_adi, rol
+            FROM kullanicilar
+            WHERE kullanici_adi = ? AND sifre = ?
+            """,
+            (kullanici_adi, sifre)
+        )
+        row = cursor.fetchone()
+
+    if row:
+        return {"kullanici_adi": row[0], "rol": row[1]}
+    return None
 
 
 def fetch_satislar_df() -> pd.DataFrame:
@@ -302,7 +357,7 @@ def summary_card(title: str, value: str, icon: str, bg_color: str = "#ffffff"):
 
 
 def log_ekle(kullanici, islem_detayi):
-    zaman = pd.Timestamp.now().strftime("%d.%m.%Y %H:%M:%S")
+    zaman = tr_datetime_string()
     log_kaydi = {
         "Tarih-Saat": zaman,
         "Kullanıcı": kullanici,
@@ -323,7 +378,7 @@ def log_ekle(kullanici, islem_detayi):
 @st.cache_data(ttl=900, show_spinner=False)
 def usd_try_kuru_getir():
     fallback_rate = 32.50
-    cekilme_zamani = pd.Timestamp.now().strftime("%d.%m.%Y %H:%M:%S")
+    cekilme_zamani = tr_datetime_string()
 
     try:
         response = requests.get("https://api.exchangerate-api.com/v4/latest/USD", timeout=6)
@@ -339,7 +394,7 @@ def bu_ay_toplam_hesapla(df: pd.DataFrame) -> float:
     if df.empty or "Tarih" not in df.columns or "Tutar" not in df.columns:
         return 0.0
 
-    bugun = pd.Timestamp.today()
+    bugun = now_tr()
     filtre = (
         (df["Tarih"].dt.month == bugun.month) &
         (df["Tarih"].dt.year == bugun.year)
@@ -512,15 +567,17 @@ def giris_ekrani_goster():
         with st.form("giris_formu", clear_on_submit=False):
             kullanici_adi = st.text_input("Kullanıcı Adı")
             sifre = st.text_input("Şifre", type="password")
+            beni_hatirla = st.checkbox("Beni Hatırla", value=True)
             giris_buton = st.form_submit_button("Giriş Yap")
 
             if giris_buton:
-                kullanici = GECERLI_KULLANICILAR.get(kullanici_adi)
+                kullanici = kullanici_dogrula(kullanici_adi, sifre)
 
-                if kullanici and kullanici["password"] == sifre:
+                if kullanici:
                     st.session_state["logged_in"] = True
-                    st.session_state["username"] = kullanici_adi
-                    st.session_state["role"] = kullanici["role"]
+                    st.session_state["username"] = kullanici["kullanici_adi"]
+                    st.session_state["role"] = kullanici["rol"]
+                    st.session_state["beni_hatirla"] = beni_hatirla
                     log_ekle(kullanici_adi, "Başarılı giriş yaptı.")
                     st.rerun()
                 else:
@@ -810,17 +867,7 @@ st.sidebar.caption(f"Rol: {st.session_state.get('role', '')}")
 st.sidebar.markdown("---")
 st.sidebar.markdown("<div style='height: 150px;'></div>", unsafe_allow_html=True)
 if st.sidebar.button("🚪 Çıkış Yap"):
-    for key in [
-        "logged_in",
-        "username",
-        "role",
-        "api_veri_modu",
-        "api_son_guncelleme",
-        "son_barkod_log",
-        "son_maliyet_log",
-    ]:
-        if key in st.session_state:
-            del st.session_state[key]
+    st.session_state.clear()
     st.rerun()
 
 
@@ -840,7 +887,7 @@ if sayfa == "Ana Panel":
         with st.spinner("Veritabanına bağlanılıyor..."):
             time.sleep(1)
         st.session_state["api_veri_modu"] = True
-        st.session_state["api_son_guncelleme"] = pd.Timestamp.now().strftime("%d.%m.%Y %H:%M:%S")
+        st.session_state["api_son_guncelleme"] = tr_datetime_string()
         st.success("Dış sistem API bağlantısı başarılı. Canlı veri okundu.")
 
     with api_sag:
@@ -1326,7 +1373,7 @@ elif sayfa == "Veri Girişi":
     with sol:
         st.subheader("Yeni Satış Ekle")
         with st.form("yeni_satis_formu", clear_on_submit=True):
-            satis_tarih = st.date_input("Tarih", value=date.today(), key="satis_tarih")
+            satis_tarih = st.date_input("Tarih", value=today_tr_date(), key="satis_tarih")
             satis_musteri = st.text_input("Müşteri", key="satis_musteri")
             satis_siparis_no = st.text_input("Sipariş No", key="satis_siparis_no")
             satis_tutar = st.number_input("Tutar", min_value=0.0, step=100.0, format="%.2f", key="satis_tutar")
@@ -1349,7 +1396,7 @@ elif sayfa == "Veri Girişi":
     with orta:
         st.subheader("Yeni Gider Ekle")
         with st.form("yeni_gider_formu", clear_on_submit=True):
-            gider_tarih = st.date_input("Tarih", value=date.today(), key="gider_tarih")
+            gider_tarih = st.date_input("Tarih", value=today_tr_date(), key="gider_tarih")
             gider_kalemi = st.text_input("Gider Kalemi", key="gider_kalemi")
             gider_tutar = st.number_input("Tutar", min_value=0.0, step=100.0, format="%.2f", key="gider_tutar")
 
