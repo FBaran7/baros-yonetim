@@ -1,3 +1,5 @@
 streamlit
 pandas
 plotly
+pytz
+extra-streamlit-components
