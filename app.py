@@ -1,11 +1,21 @@
+import csv
+import io
 import os
+import sqlite3
 import time
+from contextlib import contextmanager
 from datetime import date
 
 import pandas as pd
 import plotly.express as px
 import requests
 import streamlit as st
+
+
+# -----------------------------
+# Sabitler
+# -----------------------------
+DB_NAME = "baros_erp.db"
 
 
 # -----------------------------
@@ -75,7 +85,200 @@ STAFF_SAYFALARI = [
 
 
 # -----------------------------
-# Yardımcı fonksiyonlar
+# Veritabanı yardımcıları
+# -----------------------------
+@contextmanager
+def get_db_connection():
+    conn = sqlite3.connect(DB_NAME, timeout=10)
+    try:
+        yield conn
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def init_db():
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS satislar (
+                id INTEGER PRIMARY KEY,
+                tarih TEXT,
+                musteri TEXT,
+                siparis_no TEXT,
+                tutar REAL
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS giderler (
+                id INTEGER PRIMARY KEY,
+                tarih TEXT,
+                kalemi TEXT,
+                tutar REAL
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS stok (
+                urun_kodu TEXT PRIMARY KEY,
+                urun_adi TEXT,
+                kategori TEXT,
+                stok_adedi INTEGER,
+                birim_maliyet REAL
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS loglar (
+                id INTEGER PRIMARY KEY,
+                tarih_saat TEXT,
+                kullanici TEXT,
+                islem TEXT
+            )
+            """
+        )
+
+
+def fetch_satislar_df() -> pd.DataFrame:
+    with get_db_connection() as conn:
+        df = pd.read_sql_query(
+            """
+            SELECT
+                id,
+                tarih AS 'Tarih',
+                musteri AS 'Müşteri',
+                siparis_no AS 'Sipariş No',
+                tutar AS 'Tutar'
+            FROM satislar
+            ORDER BY id DESC
+            """,
+            conn
+        )
+
+    if "Tarih" in df.columns:
+        df["Tarih"] = pd.to_datetime(df["Tarih"], errors="coerce", dayfirst=True)
+
+    if "Tutar" in df.columns:
+        df["Tutar"] = pd.to_numeric(df["Tutar"], errors="coerce").fillna(0)
+
+    return df
+
+
+def fetch_giderler_df() -> pd.DataFrame:
+    with get_db_connection() as conn:
+        df = pd.read_sql_query(
+            """
+            SELECT
+                id,
+                tarih AS 'Tarih',
+                kalemi AS 'Gider Kalemi',
+                tutar AS 'Tutar'
+            FROM giderler
+            ORDER BY id DESC
+            """,
+            conn
+        )
+
+    if "Tarih" in df.columns:
+        df["Tarih"] = pd.to_datetime(df["Tarih"], errors="coerce", dayfirst=True)
+
+    if "Tutar" in df.columns:
+        df["Tutar"] = pd.to_numeric(df["Tutar"], errors="coerce").fillna(0)
+
+    return df
+
+
+def fetch_stok_df() -> pd.DataFrame:
+    with get_db_connection() as conn:
+        df = pd.read_sql_query(
+            """
+            SELECT
+                urun_kodu AS 'Ürün Kodu',
+                urun_adi AS 'Ürün Adı',
+                kategori AS 'Kategori',
+                stok_adedi AS 'Stok Adedi',
+                birim_maliyet AS 'Birim Maliyet'
+            FROM stok
+            ORDER BY urun_kodu
+            """,
+            conn
+        )
+
+    if "Stok Adedi" in df.columns:
+        df["Stok Adedi"] = pd.to_numeric(df["Stok Adedi"], errors="coerce").fillna(0)
+
+    if "Birim Maliyet" in df.columns:
+        df["Birim Maliyet"] = pd.to_numeric(df["Birim Maliyet"], errors="coerce").fillna(0)
+
+    return df
+
+
+def fetch_loglar_df() -> pd.DataFrame:
+    with get_db_connection() as conn:
+        df = pd.read_sql_query(
+            """
+            SELECT
+                id,
+                tarih_saat AS 'Tarih-Saat',
+                kullanici AS 'Kullanıcı',
+                islem AS 'İşlem'
+            FROM loglar
+            ORDER BY id DESC
+            """,
+            conn
+        )
+    return df
+
+
+def insert_satis(tarih: str, musteri: str, siparis_no: str, tutar: float):
+    with get_db_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO satislar (tarih, musteri, siparis_no, tutar)
+            VALUES (?, ?, ?, ?)
+            """,
+            (tarih, musteri, siparis_no, tutar)
+        )
+
+
+def insert_gider(tarih: str, kalemi: str, tutar: float):
+    with get_db_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO giderler (tarih, kalemi, tutar)
+            VALUES (?, ?, ?)
+            """,
+            (tarih, kalemi, tutar)
+        )
+
+
+def upsert_stok(urun_kodu: str, urun_adi: str, kategori: str, stok_adedi: int, birim_maliyet: float):
+    with get_db_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO stok (urun_kodu, urun_adi, kategori, stok_adedi, birim_maliyet)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(urun_kodu) DO UPDATE SET
+                urun_adi = excluded.urun_adi,
+                kategori = excluded.kategori,
+                stok_adedi = excluded.stok_adedi,
+                birim_maliyet = excluded.birim_maliyet
+            """,
+            (urun_kodu, urun_adi, kategori, stok_adedi, birim_maliyet)
+        )
+
+
+# -----------------------------
+# Genel yardımcı fonksiyonlar
 # -----------------------------
 def format_tl(amount: float) -> str:
     return f"{amount:,.2f} TL".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -100,13 +303,21 @@ def summary_card(title: str, value: str, icon: str, bg_color: str = "#ffffff"):
 
 def log_ekle(kullanici, islem_detayi):
     zaman = pd.Timestamp.now().strftime("%d.%m.%Y %H:%M:%S")
-    st.session_state["log_gecmisi"].append(
-        {
-            "Tarih-Saat": zaman,
-            "Kullanıcı": kullanici,
-            "İşlem": islem_detayi,
-        }
-    )
+    log_kaydi = {
+        "Tarih-Saat": zaman,
+        "Kullanıcı": kullanici,
+        "İşlem": islem_detayi,
+    }
+    st.session_state["log_gecmisi"].append(log_kaydi)
+
+    with get_db_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO loglar (tarih_saat, kullanici, islem)
+            VALUES (?, ?, ?)
+            """,
+            (zaman, kullanici, islem_detayi)
+        )
 
 
 @st.cache_data(ttl=900, show_spinner=False)
@@ -122,68 +333,6 @@ def usd_try_kuru_getir():
         return rate, "Canlı kur", cekilme_zamani
     except Exception:
         return fallback_rate, "Yedek kur", cekilme_zamani
-
-
-def csv_dosyalarini_hazirla():
-    if not os.path.exists(SATISLAR_DOSYA):
-        pd.DataFrame(
-            columns=["Tarih", "Müşteri", "Sipariş No", "Tutar"]
-        ).to_csv(SATISLAR_DOSYA, index=False, encoding="utf-8-sig")
-
-    if not os.path.exists(GIDERLER_DOSYA):
-        pd.DataFrame(
-            columns=["Tarih", "Gider Kalemi", "Tutar"]
-        ).to_csv(GIDERLER_DOSYA, index=False, encoding="utf-8-sig")
-
-    if not os.path.exists(STOK_DOSYA):
-        pd.DataFrame(
-            columns=["Ürün Kodu", "Ürün Adı", "Kategori", "Stok Adedi", "Birim Maliyet"]
-        ).to_csv(STOK_DOSYA, index=False, encoding="utf-8-sig")
-
-
-def satislari_oku() -> pd.DataFrame:
-    df = pd.read_csv(SATISLAR_DOSYA, encoding="utf-8-sig")
-
-    if df.empty:
-        df = pd.DataFrame(columns=["Tarih", "Müşteri", "Sipariş No", "Tutar"])
-
-    if "Tarih" in df.columns:
-        df["Tarih"] = pd.to_datetime(df["Tarih"], errors="coerce", dayfirst=True)
-
-    if "Tutar" in df.columns:
-        df["Tutar"] = pd.to_numeric(df["Tutar"], errors="coerce").fillna(0)
-
-    return df
-
-
-def giderleri_oku() -> pd.DataFrame:
-    df = pd.read_csv(GIDERLER_DOSYA, encoding="utf-8-sig")
-
-    if df.empty:
-        df = pd.DataFrame(columns=["Tarih", "Gider Kalemi", "Tutar"])
-
-    if "Tarih" in df.columns:
-        df["Tarih"] = pd.to_datetime(df["Tarih"], errors="coerce", dayfirst=True)
-
-    if "Tutar" in df.columns:
-        df["Tutar"] = pd.to_numeric(df["Tutar"], errors="coerce").fillna(0)
-
-    return df
-
-
-def stok_oku() -> pd.DataFrame:
-    df = pd.read_csv(STOK_DOSYA, encoding="utf-8-sig")
-
-    if df.empty:
-        df = pd.DataFrame(columns=["Ürün Kodu", "Ürün Adı", "Kategori", "Stok Adedi", "Birim Maliyet"])
-
-    if "Stok Adedi" in df.columns:
-        df["Stok Adedi"] = pd.to_numeric(df["Stok Adedi"], errors="coerce").fillna(0)
-
-    if "Birim Maliyet" in df.columns:
-        df["Birim Maliyet"] = pd.to_numeric(df["Birim Maliyet"], errors="coerce").fillna(0)
-
-    return df
 
 
 def bu_ay_toplam_hesapla(df: pd.DataFrame) -> float:
@@ -214,7 +363,9 @@ def tablo_gosterime_hazirla(df: pd.DataFrame, tutar_kolonu: str) -> pd.DataFrame
 
 def stok_tablo_gosterime_hazirla(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
-        return pd.DataFrame(columns=["Ürün Kodu", "Ürün Adı", "Kategori", "Stok Adedi", "Birim Maliyet", "Toplam Maliyet"])
+        return pd.DataFrame(
+            columns=["Ürün Kodu", "Ürün Adı", "Kategori", "Stok Adedi", "Birim Maliyet", "Toplam Maliyet"]
+        )
 
     df_gosterim = df.copy()
     df_gosterim["Toplam Maliyet"] = df_gosterim["Stok Adedi"] * df_gosterim["Birim Maliyet"]
@@ -238,6 +389,15 @@ def stok_toplam_adet_hesapla(df: pd.DataFrame) -> int:
     if df.empty:
         return 0
     return int(df["Stok Adedi"].sum())
+
+
+def create_sample_csv_bytes(fieldnames, rows):
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    for row in rows:
+        writer.writerow(row)
+    return output.getvalue().encode("utf-8-sig")
 
 
 # -----------------------------
@@ -373,27 +533,26 @@ def giris_ekrani_goster():
         st.markdown("</div>", unsafe_allow_html=True)
 
 
+# -----------------------------
+# DB başlat
+# -----------------------------
+init_db()
+
+
+# -----------------------------
+# Login kontrolü
+# -----------------------------
 if not st.session_state["logged_in"]:
     giris_ekrani_goster()
     st.stop()
 
 
 # -----------------------------
-# Dosya yolları
+# Verileri DB'den oku
 # -----------------------------
-SATISLAR_DOSYA = "satislar.csv"
-GIDERLER_DOSYA = "giderler.csv"
-STOK_DOSYA = "stok.csv"
-
-
-# -----------------------------
-# CSV hazırlık ve veri okuma
-# -----------------------------
-csv_dosyalarini_hazirla()
-
-satislar_df = satislari_oku()
-giderler_df = giderleri_oku()
-stok_df = stok_oku()
+satislar_df = fetch_satislar_df()
+giderler_df = fetch_giderler_df()
+stok_df = fetch_stok_df()
 
 bu_ay_satis = bu_ay_toplam_hesapla(satislar_df)
 bu_ay_toplam_gider = bu_ay_toplam_hesapla(giderler_df)
@@ -642,9 +801,6 @@ sayfa = st.sidebar.radio(
     index=varsayilan_index
 )
 
-if rol == "staff" and sayfa not in STAFF_SAYFALARI:
-    sayfa = "Veri Girişi"
-
 st.sidebar.markdown("---")
 st.sidebar.caption("Baros Yönetim Sistemi")
 st.sidebar.caption("Premium demo arayüz")
@@ -654,7 +810,15 @@ st.sidebar.caption(f"Rol: {st.session_state.get('role', '')}")
 st.sidebar.markdown("---")
 st.sidebar.markdown("<div style='height: 150px;'></div>", unsafe_allow_html=True)
 if st.sidebar.button("🚪 Çıkış Yap"):
-    for key in ["logged_in", "username", "role", "api_veri_modu", "api_son_guncelleme", "son_barkod_log", "son_maliyet_log"]:
+    for key in [
+        "logged_in",
+        "username",
+        "role",
+        "api_veri_modu",
+        "api_son_guncelleme",
+        "son_barkod_log",
+        "son_maliyet_log",
+    ]:
         if key in st.session_state:
             del st.session_state[key]
     st.rerun()
@@ -696,21 +860,30 @@ if sayfa == "Ana Panel":
     ]
 
     with st.expander("📥 Dış Sistemden Veri Yükle (Excel/CSV)", expanded=False):
-        ornek_df = pd.DataFrame(
+        ornek_rows = [
             {
-                "Ürün Kategori": ["Gömlek", "Mont"],
-                "Sezon": ["İlkbahar 2026", "Kış 2025"],
-                "Ürün Adı": ["Slim Fit Poplin Gömlek", "Kapitone Şişme Mont"],
-                "Birim Satış Fiyatı (TL)": [720, 1450],
-                "Birim Üretim Maliyeti (TL)": [410, 920],
-                "Satılan Adet": [980, 410],
-                "Depodaki Kalan Adet": [260, 95],
-            }
-        )
+                "Ürün Kategori": "Gömlek",
+                "Sezon": "İlkbahar 2026",
+                "Ürün Adı": "Slim Fit Poplin Gömlek",
+                "Birim Satış Fiyatı (TL)": 720,
+                "Birim Üretim Maliyeti (TL)": 410,
+                "Satılan Adet": 980,
+                "Depodaki Kalan Adet": 260,
+            },
+            {
+                "Ürün Kategori": "Mont",
+                "Sezon": "Kış 2025",
+                "Ürün Adı": "Kapitone Şişme Mont",
+                "Birim Satış Fiyatı (TL)": 1450,
+                "Birim Üretim Maliyeti (TL)": 920,
+                "Satılan Adet": 410,
+                "Depodaki Kalan Adet": 95,
+            },
+        ]
 
         st.download_button(
             label="📄 Örnek CSV Şablonunu İndir",
-            data=ornek_df.to_csv(index=False).encode("utf-8-sig"),
+            data=create_sample_csv_bytes(gerekli_kolonlar, ornek_rows),
             file_name="erp_dashboard_ornek_sablon.csv",
             mime="text/csv"
         )
@@ -818,7 +991,9 @@ if sayfa == "Ana Panel":
             dosya_adi = yuklenen_dosya.name.lower()
 
             if dosya_adi.endswith(".csv"):
-                yuklenen_df = pd.read_csv(yuklenen_dosya)
+                text_data = yuklenen_dosya.getvalue().decode("utf-8-sig")
+                reader = csv.DictReader(io.StringIO(text_data))
+                yuklenen_df = pd.DataFrame(list(reader))
             else:
                 yuklenen_df = pd.read_excel(yuklenen_dosya)
 
@@ -1004,7 +1179,7 @@ if sayfa == "Ana Panel":
 
 elif sayfa == "Stok Değerleme":
     st.title("📦 Stok Değerleme")
-    st.caption("Stok verileri stok.csv dosyasından okunur")
+    st.caption("Stok verileri veritabanından okunur")
 
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -1102,7 +1277,7 @@ elif sayfa == "Cari":
 
 elif sayfa == "Satışlar":
     st.title("🧾 Satışlar")
-    st.caption("CSV dosyasından okunan satış hareketleri")
+    st.caption("Veritabanından okunan satış hareketleri")
 
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -1114,11 +1289,14 @@ elif sayfa == "Satışlar":
         st.metric("Ortalama Sipariş", format_tl(ortalama_siparis))
 
     st.markdown("### Son Satışlar")
-    st.dataframe(satislar_gosterim_df, use_container_width=True, hide_index=True)
+    if satislar_gosterim_df.empty:
+        st.info("Henüz satış kaydı yok.")
+    else:
+        st.dataframe(satislar_gosterim_df.drop(columns=["id"], errors="ignore"), use_container_width=True, hide_index=True)
 
 elif sayfa == "Giderler":
     st.title("💸 Giderler")
-    st.caption("CSV dosyasından okunan gider hareketleri")
+    st.caption("Veritabanından okunan gider hareketleri")
 
     c1, c2 = st.columns(2)
     with c1:
@@ -1131,11 +1309,14 @@ elif sayfa == "Giderler":
         st.metric("En Yüksek Gider Kalemi", en_yuksek_gider)
 
     st.markdown("### Gider Listesi")
-    st.dataframe(giderler_gosterim_df, use_container_width=True, hide_index=True)
+    if giderler_gosterim_df.empty:
+        st.info("Henüz gider kaydı yok.")
+    else:
+        st.dataframe(giderler_gosterim_df.drop(columns=["id"], errors="ignore"), use_container_width=True, hide_index=True)
 
 elif sayfa == "Veri Girişi":
     st.title("📝 Veri Girişi")
-    st.caption("Yeni satış, gider ve stok kayıtlarını CSV dosyalarına ekleyin")
+    st.caption("Yeni satış, gider ve stok kayıtlarını veritabanına ekleyin")
 
     if "bildirim_mesaji" in st.session_state:
         st.success(st.session_state.pop("bildirim_mesaji"))
@@ -1156,20 +1337,11 @@ elif sayfa == "Veri Girişi":
                 if not satis_musteri.strip() or not satis_siparis_no.strip():
                     st.error("Lütfen tüm satış alanlarını doldurun.")
                 else:
-                    yeni_satis = pd.DataFrame(
-                        [{
-                            "Tarih": pd.to_datetime(satis_tarih).strftime("%d.%m.%Y"),
-                            "Müşteri": satis_musteri.strip(),
-                            "Sipariş No": satis_siparis_no.strip(),
-                            "Tutar": satis_tutar
-                        }]
-                    )
-                    yeni_satis.to_csv(
-                        SATISLAR_DOSYA,
-                        mode="a",
-                        header=False,
-                        index=False,
-                        encoding="utf-8-sig"
+                    insert_satis(
+                        pd.to_datetime(satis_tarih).strftime("%d.%m.%Y"),
+                        satis_musteri.strip(),
+                        satis_siparis_no.strip(),
+                        float(satis_tutar),
                     )
                     st.session_state["bildirim_mesaji"] = "Yeni satış başarıyla kaydedildi."
                     st.rerun()
@@ -1187,19 +1359,10 @@ elif sayfa == "Veri Girişi":
                 if not gider_kalemi.strip():
                     st.error("Lütfen gider kalemini girin.")
                 else:
-                    yeni_gider = pd.DataFrame(
-                        [{
-                            "Tarih": pd.to_datetime(gider_tarih).strftime("%d.%m.%Y"),
-                            "Gider Kalemi": gider_kalemi.strip(),
-                            "Tutar": gider_tutar
-                        }]
-                    )
-                    yeni_gider.to_csv(
-                        GIDERLER_DOSYA,
-                        mode="a",
-                        header=False,
-                        index=False,
-                        encoding="utf-8-sig"
+                    insert_gider(
+                        pd.to_datetime(gider_tarih).strftime("%d.%m.%Y"),
+                        gider_kalemi.strip(),
+                        float(gider_tutar),
                     )
                     st.session_state["bildirim_mesaji"] = "Yeni gider başarıyla kaydedildi."
                     st.rerun()
@@ -1219,21 +1382,12 @@ elif sayfa == "Veri Girişi":
                 if not urun_kodu.strip() or not urun_adi.strip() or not kategori.strip():
                     st.error("Lütfen tüm ürün alanlarını doldurun.")
                 else:
-                    yeni_stok = pd.DataFrame(
-                        [{
-                            "Ürün Kodu": urun_kodu.strip(),
-                            "Ürün Adı": urun_adi.strip(),
-                            "Kategori": kategori.strip(),
-                            "Stok Adedi": stok_adedi,
-                            "Birim Maliyet": birim_maliyet
-                        }]
-                    )
-                    yeni_stok.to_csv(
-                        STOK_DOSYA,
-                        mode="a",
-                        header=False,
-                        index=False,
-                        encoding="utf-8-sig"
+                    upsert_stok(
+                        urun_kodu.strip(),
+                        urun_adi.strip(),
+                        kategori.strip(),
+                        int(stok_adedi),
+                        float(birim_maliyet),
                     )
                     st.session_state["bildirim_mesaji"] = "Yeni ürün / stok başarıyla kaydedildi."
                     st.rerun()
@@ -1334,7 +1488,10 @@ elif sayfa == "Maliyet Simülatörü":
 
     if st.session_state.get("son_maliyet_log") != maliyet_imza:
         urun_adi_log = urun_cinsi if urun_cinsi else "belirtilmeyen ürün"
-        log_ekle(st.session_state.get("username", "bilinmiyor"), f"Maliyet hesapladı: {urun_adi_log} için toplam maliyet {format_tl(toplam_maliyet)}.")
+        log_ekle(
+            st.session_state.get("username", "bilinmiyor"),
+            f"Maliyet hesapladı: {urun_adi_log} için toplam maliyet {format_tl(toplam_maliyet)}."
+        )
         st.session_state["son_maliyet_log"] = maliyet_imza
 
     st.markdown("###")
@@ -1488,14 +1645,13 @@ elif sayfa == "Sistem Geçmişi":
     if st.session_state.get("role") != "admin":
         st.error("Bu sayfayı görüntüleme yetkiniz yok.")
     else:
-        loglar = st.session_state.get("log_gecmisi", [])
+        log_df = fetch_loglar_df()
 
-        if not loglar:
+        if log_df.empty:
             st.info("Henüz sistem geçmişinde kayıt yok.")
         else:
-            log_df = pd.DataFrame(loglar)
-            log_df = log_df.iloc[::-1].reset_index(drop=True)
-            st.dataframe(log_df, use_container_width=True, hide_index=True)
-
-elif sayfa == "Cari":
-    pass
+            st.dataframe(
+                log_df.drop(columns=["id"], errors="ignore"),
+                use_container_width=True,
+                hide_index=True
+            )
