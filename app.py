@@ -5,8 +5,10 @@ import sqlite3
 import time
 from contextlib import contextmanager
 
+import extra_streamlit_components as stx
 import pandas as pd
 import plotly.express as px
+import pytz
 import requests
 import streamlit as st
 
@@ -15,14 +17,14 @@ import streamlit as st
 # Sabitler
 # -----------------------------
 DB_NAME = "baros_erp.db"
-TURKEY_TZ = "Europe/Istanbul"
+turkey_tz = pytz.timezone("Europe/Istanbul")
 
 
 # -----------------------------
 # Zaman yardımcıları
 # -----------------------------
 def now_tr() -> pd.Timestamp:
-    return pd.Timestamp.now(tz=TURKEY_TZ)
+    return pd.Timestamp.now(tz=turkey_tz)
 
 
 def today_tr_date():
@@ -40,8 +42,10 @@ st.set_page_config(
     page_title="Yönetim, Stok ve Karlılık Kontrol Sistemi",
     page_icon="📊",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
+
+cookie_manager = stx.CookieManager()
 
 
 # -----------------------------
@@ -182,7 +186,7 @@ def init_db():
                 [
                     ("patron", "baros2026", "admin"),
                     ("depo", "depo123", "staff"),
-                ]
+                ],
             )
 
 
@@ -194,7 +198,24 @@ def kullanici_dogrula(kullanici_adi: str, sifre: str):
             FROM kullanicilar
             WHERE kullanici_adi = ? AND sifre = ?
             """,
-            (kullanici_adi, sifre)
+            (kullanici_adi, sifre),
+        )
+        row = cursor.fetchone()
+
+    if row:
+        return {"kullanici_adi": row[0], "rol": row[1]}
+    return None
+
+
+def kullanici_getir(kullanici_adi: str):
+    with get_db_connection() as conn:
+        cursor = conn.execute(
+            """
+            SELECT kullanici_adi, rol
+            FROM kullanicilar
+            WHERE kullanici_adi = ?
+            """,
+            (kullanici_adi,),
         )
         row = cursor.fetchone()
 
@@ -216,7 +237,7 @@ def fetch_satislar_df() -> pd.DataFrame:
             FROM satislar
             ORDER BY id DESC
             """,
-            conn
+            conn,
         )
 
     if "Tarih" in df.columns:
@@ -240,7 +261,7 @@ def fetch_giderler_df() -> pd.DataFrame:
             FROM giderler
             ORDER BY id DESC
             """,
-            conn
+            conn,
         )
 
     if "Tarih" in df.columns:
@@ -265,7 +286,7 @@ def fetch_stok_df() -> pd.DataFrame:
             FROM stok
             ORDER BY urun_kodu
             """,
-            conn
+            conn,
         )
 
     if "Stok Adedi" in df.columns:
@@ -289,7 +310,7 @@ def fetch_loglar_df() -> pd.DataFrame:
             FROM loglar
             ORDER BY id DESC
             """,
-            conn
+            conn,
         )
     return df
 
@@ -301,7 +322,7 @@ def insert_satis(tarih: str, musteri: str, siparis_no: str, tutar: float):
             INSERT INTO satislar (tarih, musteri, siparis_no, tutar)
             VALUES (?, ?, ?, ?)
             """,
-            (tarih, musteri, siparis_no, tutar)
+            (tarih, musteri, siparis_no, tutar),
         )
 
 
@@ -312,7 +333,7 @@ def insert_gider(tarih: str, kalemi: str, tutar: float):
             INSERT INTO giderler (tarih, kalemi, tutar)
             VALUES (?, ?, ?)
             """,
-            (tarih, kalemi, tutar)
+            (tarih, kalemi, tutar),
         )
 
 
@@ -328,8 +349,33 @@ def upsert_stok(urun_kodu: str, urun_adi: str, kategori: str, stok_adedi: int, b
                 stok_adedi = excluded.stok_adedi,
                 birim_maliyet = excluded.birim_maliyet
             """,
-            (urun_kodu, urun_adi, kategori, stok_adedi, birim_maliyet)
+            (urun_kodu, urun_adi, kategori, stok_adedi, birim_maliyet),
         )
+
+
+# -----------------------------
+# Cookie yardımcıları
+# -----------------------------
+def cookie_auth_get():
+    try:
+        return cookie_manager.get("erp_auth_token")
+    except Exception:
+        return None
+
+
+def cookie_auth_set(username: str):
+    try:
+        expires_at = (now_tr() + pd.Timedelta(days=30)).to_pydatetime()
+        cookie_manager.set("erp_auth_token", username, expires_at=expires_at)
+    except Exception:
+        pass
+
+
+def cookie_auth_delete():
+    try:
+        cookie_manager.delete("erp_auth_token")
+    except Exception:
+        pass
 
 
 # -----------------------------
@@ -352,7 +398,7 @@ def summary_card(title: str, value: str, icon: str, bg_color: str = "#ffffff"):
             <div class="ozet-deger">{value}</div>
         </div>
         """,
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
 
@@ -371,7 +417,7 @@ def log_ekle(kullanici, islem_detayi):
             INSERT INTO loglar (tarih_saat, kullanici, islem)
             VALUES (?, ?, ?)
             """,
-            (zaman, kullanici, islem_detayi)
+            (zaman, kullanici, islem_detayi),
         )
 
 
@@ -396,8 +442,8 @@ def bu_ay_toplam_hesapla(df: pd.DataFrame) -> float:
 
     bugun = now_tr()
     filtre = (
-        (df["Tarih"].dt.month == bugun.month) &
-        (df["Tarih"].dt.year == bugun.year)
+        (df["Tarih"].dt.month == bugun.month)
+        & (df["Tarih"].dt.year == bugun.year)
     )
     return float(df.loc[filtre, "Tutar"].sum())
 
@@ -406,9 +452,7 @@ def tablo_gosterime_hazirla(df: pd.DataFrame, tutar_kolonu: str) -> pd.DataFrame
     df_gosterim = df.copy()
 
     if "Tarih" in df_gosterim.columns:
-        df_gosterim["Tarih"] = pd.to_datetime(
-            df_gosterim["Tarih"], errors="coerce"
-        ).dt.strftime("%d.%m.%Y")
+        df_gosterim["Tarih"] = pd.to_datetime(df_gosterim["Tarih"], errors="coerce").dt.strftime("%d.%m.%Y")
 
     if tutar_kolonu in df_gosterim.columns:
         df_gosterim[tutar_kolonu] = df_gosterim[tutar_kolonu].apply(format_tl)
@@ -551,7 +595,7 @@ def giris_ekrani_goster():
             }
         </style>
         """,
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
     bos1, orta, bos2 = st.columns([1.2, 1, 1.2])
@@ -561,7 +605,7 @@ def giris_ekrani_goster():
         st.markdown('<div class="giris-baslik">Giriş Yap</div>', unsafe_allow_html=True)
         st.markdown(
             '<div class="giris-aciklama">Yönetim, Stok ve Karlılık Kontrol Sistemi</div>',
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
 
         with st.form("giris_formu", clear_on_submit=False):
@@ -578,6 +622,12 @@ def giris_ekrani_goster():
                     st.session_state["username"] = kullanici["kullanici_adi"]
                     st.session_state["role"] = kullanici["rol"]
                     st.session_state["beni_hatirla"] = beni_hatirla
+
+                    if beni_hatirla:
+                        cookie_auth_set(kullanici["kullanici_adi"])
+                    else:
+                        cookie_auth_delete()
+
                     log_ekle(kullanici_adi, "Başarılı giriş yaptı.")
                     st.rerun()
                 else:
@@ -585,7 +635,7 @@ def giris_ekrani_goster():
 
         st.markdown(
             '<div class="giris-alti-not">Yetkisiz erişim engellenmiştir.</div>',
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -594,6 +644,22 @@ def giris_ekrani_goster():
 # DB başlat
 # -----------------------------
 init_db()
+
+
+# -----------------------------
+# Cookie ile otomatik giriş
+# -----------------------------
+if not st.session_state["logged_in"]:
+    cookie_username = cookie_auth_get()
+    if cookie_username:
+        kullanici = kullanici_getir(cookie_username)
+        if kullanici:
+            st.session_state["logged_in"] = True
+            st.session_state["username"] = kullanici["kullanici_adi"]
+            st.session_state["role"] = kullanici["rol"]
+            st.session_state["beni_hatirla"] = True
+        else:
+            cookie_auth_delete()
 
 
 # -----------------------------
@@ -824,7 +890,7 @@ st.markdown(
         }
     </style>
     """,
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
 
 
@@ -855,7 +921,7 @@ if not kullanilabilir_sayfalar:
 sayfa = st.sidebar.radio(
     "Sayfa Seçin",
     kullanilabilir_sayfalar,
-    index=varsayilan_index
+    index=varsayilan_index,
 )
 
 st.sidebar.markdown("---")
@@ -867,6 +933,7 @@ st.sidebar.caption(f"Rol: {st.session_state.get('role', '')}")
 st.sidebar.markdown("---")
 st.sidebar.markdown("<div style='height: 150px;'></div>", unsafe_allow_html=True)
 if st.sidebar.button("🚪 Çıkış Yap"):
+    cookie_auth_delete()
     st.session_state.clear()
     st.rerun()
 
@@ -932,12 +999,12 @@ if sayfa == "Ana Panel":
             label="📄 Örnek CSV Şablonunu İndir",
             data=create_sample_csv_bytes(gerekli_kolonlar, ornek_rows),
             file_name="erp_dashboard_ornek_sablon.csv",
-            mime="text/csv"
+            mime="text/csv",
         )
 
         yuklenen_dosya = st.file_uploader(
             "Excel veya CSV dosyanızı yükleyin",
-            type=["csv", "xlsx"]
+            type=["csv", "xlsx"],
         )
 
     demo_erp_df = pd.DataFrame(
@@ -1131,6 +1198,23 @@ if sayfa == "Ana Panel":
         summary_card("Depodaki Malın Değeri", format_tl(depodaki_malin_degeri), "📦", "#ffffff")
 
     st.markdown("###")
+    st.subheader("🚨 Kritik Stok Uyarıları")
+
+    kritik_stok_df = stok_df[stok_df["Stok Adedi"] < 50].copy() if not stok_df.empty else pd.DataFrame()
+
+    if kritik_stok_df.empty:
+        st.success("Şu an kritik seviyede stok bulunmuyor.")
+    else:
+        st.warning("50 adedin altına düşen ürünler var. Üretim / tedarik planı gözden geçirilmeli.")
+        kritik_stok_gosterim = kritik_stok_df.copy()
+        kritik_stok_gosterim["Birim Maliyet"] = kritik_stok_gosterim["Birim Maliyet"].apply(format_tl)
+        st.dataframe(
+            kritik_stok_gosterim,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    st.markdown("###")
 
     grafik_sol, grafik_sag = st.columns(2)
 
@@ -1144,7 +1228,7 @@ if sayfa == "Ana Panel":
                 id_vars="Ürün Kategori",
                 value_vars=["Toplam Ciro (TL)", "Satılan Malın Maliyeti (TL)"],
                 var_name="Gösterge",
-                value_name="Tutar"
+                value_name="Tutar",
             )
 
             fig_ciro_maliyet = px.bar(
@@ -1153,7 +1237,7 @@ if sayfa == "Ana Panel":
                 y="Tutar",
                 color="Gösterge",
                 barmode="group",
-                text_auto=".2s"
+                text_auto=".2s",
             )
             fig_ciro_maliyet.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)",
@@ -1162,7 +1246,7 @@ if sayfa == "Ana Panel":
                 font=dict(color="#111827"),
                 legend_title_text="Gösterge",
                 xaxis_title="Ürün Kategori",
-                yaxis_title="Tutar (TL)"
+                yaxis_title="Tutar (TL)",
             )
             fig_ciro_maliyet.update_xaxes(showgrid=False)
             fig_ciro_maliyet.update_yaxes(gridcolor="rgba(17,24,39,0.08)")
@@ -1178,14 +1262,14 @@ if sayfa == "Ana Panel":
                 kategori_df,
                 names="Ürün Kategori",
                 values="Depodaki Malın Değeri (TL)",
-                hole=0.58
+                hole=0.58,
             )
             fig_stok_deger.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
                 margin=dict(l=10, r=10, t=10, b=10),
                 font=dict(color="#111827"),
-                legend_title_text="Kategori"
+                legend_title_text="Kategori",
             )
             st.plotly_chart(fig_stok_deger, use_container_width=True)
 
@@ -1537,7 +1621,7 @@ elif sayfa == "Maliyet Simülatörü":
         urun_adi_log = urun_cinsi if urun_cinsi else "belirtilmeyen ürün"
         log_ekle(
             st.session_state.get("username", "bilinmiyor"),
-            f"Maliyet hesapladı: {urun_adi_log} için toplam maliyet {format_tl(toplam_maliyet)}."
+            f"Maliyet hesapladı: {urun_adi_log} için toplam maliyet {format_tl(toplam_maliyet)}.",
         )
         st.session_state["son_maliyet_log"] = maliyet_imza
 
@@ -1577,7 +1661,7 @@ elif sayfa == "Maliyet Simülatörü":
                 format_tl(paketleme_tl),
                 format_tl(toplam_try_maliyeti),
                 format_tl(toplam_maliyet),
-            ]
+            ],
         }
     )
     st.dataframe(ozet_df, use_container_width=True, hide_index=True)
@@ -1661,7 +1745,7 @@ elif sayfa == "Depo & Barkod Radarı":
                     </div>
                 </div>
                 """,
-                unsafe_allow_html=True
+                unsafe_allow_html=True,
             )
 
             kart_sol, kart_orta, kart_sag = st.columns(3)
@@ -1700,5 +1784,5 @@ elif sayfa == "Sistem Geçmişi":
             st.dataframe(
                 log_df.drop(columns=["id"], errors="ignore"),
                 use_container_width=True,
-                hide_index=True
+                hide_index=True,
             )
