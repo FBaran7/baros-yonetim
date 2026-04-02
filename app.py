@@ -4,6 +4,7 @@ from datetime import date
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import requests
 import streamlit as st
 
 
@@ -34,11 +35,13 @@ ADMIN_SAYFALARI = [
     "Giderler",
     "Veri Girişi",
     "Maliyet Simülatörü",
+    "Depo & Barkod Radarı",
 ]
 
 STAFF_SAYFALARI = [
     "Veri Girişi",
     "Stok Değerleme",
+    "Depo & Barkod Radarı",
 ]
 
 if "logged_in" not in st.session_state:
@@ -97,7 +100,6 @@ def giris_ekrani_goster():
                 margin-bottom: 24px;
             }
 
-            /* Mobil dark mode / tüm inputlar için kesin renk düzeltmesi */
             input, textarea, select {
                 color: #111827 !important;
                 background-color: #ffffff !important;
@@ -221,12 +223,14 @@ STOK_DOSYA = "stok.csv"
 # Yardımcı fonksiyonlar
 # -----------------------------
 def format_tl(amount: float) -> str:
-    """Sayıyı TL formatında gösterir."""
     return f"{amount:,.2f} TL".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+def format_decimal(value: float, digits: int = 2) -> str:
+    return f"{value:,.{digits}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
 def summary_card(title: str, value: str, icon: str, bg_color: str = "#ffffff"):
-    """Premium özet kartı."""
     st.markdown(
         f"""
         <div class="ozet-kart" style="background-color: {bg_color};">
@@ -239,8 +243,20 @@ def summary_card(title: str, value: str, icon: str, bg_color: str = "#ffffff"):
     )
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def usd_try_kuru_getir():
+    fallback_rate = 32.50
+    try:
+        response = requests.get("https://api.exchangerate-api.com/v4/latest/USD", timeout=5)
+        response.raise_for_status()
+        data = response.json()
+        rate = float(data["rates"]["TRY"])
+        return rate, "Canlı kur"
+    except Exception:
+        return fallback_rate, "Yedek kur"
+
+
 def csv_dosyalarini_hazirla():
-    """CSV dosyaları yoksa oluşturur."""
     if not os.path.exists(SATISLAR_DOSYA):
         pd.DataFrame(
             columns=["Tarih", "Müşteri", "Sipariş No", "Tutar"]
@@ -258,7 +274,6 @@ def csv_dosyalarini_hazirla():
 
 
 def satislari_oku() -> pd.DataFrame:
-    """Satışlar CSV dosyasını okur."""
     df = pd.read_csv(SATISLAR_DOSYA, encoding="utf-8-sig")
 
     if df.empty:
@@ -274,7 +289,6 @@ def satislari_oku() -> pd.DataFrame:
 
 
 def giderleri_oku() -> pd.DataFrame:
-    """Giderler CSV dosyasını okur."""
     df = pd.read_csv(GIDERLER_DOSYA, encoding="utf-8-sig")
 
     if df.empty:
@@ -290,7 +304,6 @@ def giderleri_oku() -> pd.DataFrame:
 
 
 def stok_oku() -> pd.DataFrame:
-    """Stok CSV dosyasını okur."""
     df = pd.read_csv(STOK_DOSYA, encoding="utf-8-sig")
 
     if df.empty:
@@ -306,7 +319,6 @@ def stok_oku() -> pd.DataFrame:
 
 
 def bu_ay_toplam_hesapla(df: pd.DataFrame) -> float:
-    """Verilen DataFrame için bu ayın toplam tutarını hesaplar."""
     if df.empty or "Tarih" not in df.columns or "Tutar" not in df.columns:
         return 0.0
 
@@ -319,7 +331,6 @@ def bu_ay_toplam_hesapla(df: pd.DataFrame) -> float:
 
 
 def tablo_gosterime_hazirla(df: pd.DataFrame, tutar_kolonu: str) -> pd.DataFrame:
-    """Tabloyu ekranda gösterilecek hale getirir."""
     df_gosterim = df.copy()
 
     if "Tarih" in df_gosterim.columns:
@@ -334,7 +345,6 @@ def tablo_gosterime_hazirla(df: pd.DataFrame, tutar_kolonu: str) -> pd.DataFrame
 
 
 def stok_tablo_gosterime_hazirla(df: pd.DataFrame) -> pd.DataFrame:
-    """Stok tablosunu ekranda gösterilecek hale getirir."""
     if df.empty:
         return pd.DataFrame(columns=["Ürün Kodu", "Ürün Adı", "Kategori", "Stok Adedi", "Birim Maliyet", "Toplam Maliyet"])
 
@@ -351,14 +361,12 @@ def stok_tablo_gosterime_hazirla(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def stok_toplam_maliyet_hesapla(df: pd.DataFrame) -> float:
-    """Toplam stok maliyetini hesaplar."""
     if df.empty:
         return 0.0
     return float((df["Stok Adedi"] * df["Birim Maliyet"]).sum())
 
 
 def stok_toplam_adet_hesapla(df: pd.DataFrame) -> int:
-    """Toplam ürün adedini hesaplar."""
     if df.empty:
         return 0
     return int(df["Stok Adedi"].sum())
@@ -396,7 +404,6 @@ stok_detay_gosterim_df = stok_tablo_gosterime_hazirla(stok_df)
 st.markdown(
     """
     <style>
-        /* Genel arka plan */
         .stApp {
             background: #f4f5f7;
         }
@@ -407,7 +414,6 @@ st.markdown(
             max-width: 1400px;
         }
 
-        /* Sadece ana menü ve footer gizle */
         #MainMenu {
             visibility: hidden;
         }
@@ -416,14 +422,12 @@ st.markdown(
             visibility: hidden;
         }
 
-        /* Sidebar toggle butonu görünür kalsın */
         [data-testid="collapsedControl"] {
             display: flex !important;
             visibility: visible !important;
             opacity: 1 !important;
         }
 
-        /* Sidebar */
         section[data-testid="stSidebar"] {
             background: linear-gradient(180deg, #ffffff 0%, #f7f8fa 100%);
             border-right: 1px solid rgba(15, 23, 42, 0.06);
@@ -433,7 +437,6 @@ st.markdown(
             padding-top: 1rem;
         }
 
-        /* Yazılar */
         h1, h2, h3 {
             color: #111827;
             letter-spacing: -0.02em;
@@ -443,7 +446,6 @@ st.markdown(
             color: #1f2937;
         }
 
-        /* Mobil dark mode / tüm inputlar için kesin düzeltme */
         input, textarea, select {
             color: #111827 !important;
             background-color: #ffffff !important;
@@ -489,7 +491,6 @@ st.markdown(
             opacity: 1 !important;
         }
 
-        /* Kartlar */
         .ozet-kart {
             padding: 22px;
             border-radius: 20px;
@@ -523,7 +524,6 @@ st.markdown(
             line-height: 1.1;
         }
 
-        /* Metric kutuları */
         [data-testid="metric-container"] {
             background: #ffffff;
             border: 1px solid rgba(15, 23, 42, 0.06);
@@ -542,7 +542,6 @@ st.markdown(
             font-weight: 800;
         }
 
-        /* Dataframe / tablo */
         div[data-testid="stDataFrame"] {
             background: #ffffff;
             border: 1px solid rgba(15, 23, 42, 0.06);
@@ -551,7 +550,6 @@ st.markdown(
             box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
         }
 
-        /* Butonlar */
         .stButton > button,
         [data-testid="stFormSubmitButton"] > button,
         [data-testid="stDownloadButton"] > button {
@@ -582,7 +580,6 @@ st.markdown(
             box-shadow: 0 0 0 0.2rem rgba(55, 65, 81, 0.18);
         }
 
-        /* Radio menü */
         [data-testid="stSidebar"] [role="radiogroup"] {
             gap: 0.3rem;
         }
@@ -595,7 +592,6 @@ st.markdown(
             box-shadow: 0 4px 10px rgba(15, 23, 42, 0.03);
         }
 
-        /* Info / success mesajları */
         [data-testid="stAlert"] {
             border-radius: 16px;
             border: 1px solid rgba(15, 23, 42, 0.06);
@@ -660,7 +656,6 @@ if sayfa == "Ana Panel":
     st.title("📊 Ana Panel")
     st.caption("Toptan tekstil şirketi için kâr/zarar ve depo değerleme odaklı yönetici ekranı")
 
-    # Dış sistem şablonu
     gerekli_kolonlar = [
         "Ürün Kategori",
         "Sezon",
@@ -686,7 +681,7 @@ if sayfa == "Ana Panel":
 
         st.download_button(
             label="📄 Örnek CSV Şablonunu İndir",
-            data=ornek_df.to_csv(index=False, encoding="utf-8-sig"),
+            data=ornek_df.to_csv(index=False).encode("utf-8-sig"),
             file_name="erp_dashboard_ornek_sablon.csv",
             mime="text/csv"
         )
@@ -696,7 +691,6 @@ if sayfa == "Ana Panel":
             type=["csv", "xlsx"]
         )
 
-    # Varsayılan demo veri
     demo_erp_df = pd.DataFrame(
         {
             "Ürün Adı": [
@@ -757,9 +751,7 @@ if sayfa == "Ana Panel":
             eksik_kolonlar = [kolon for kolon in gerekli_kolonlar if kolon not in yuklenen_df.columns]
 
             if eksik_kolonlar:
-                st.error(
-                    "Yüklenen dosyada eksik kolonlar var: " + ", ".join(eksik_kolonlar)
-                )
+                st.error("Yüklenen dosyada eksik kolonlar var: " + ", ".join(eksik_kolonlar))
                 st.info("Lütfen örnek şablonu indirip aynı kolon yapısıyla yükleyin.")
                 erp_df = demo_erp_df.copy()
                 veri_kaynagi_demo = True
@@ -788,7 +780,6 @@ if sayfa == "Ana Panel":
     if veri_kaynagi_demo:
         st.warning("Şu an Demo (Örnek) verisi görüyorsunuz. Kendi verilerinizi yukarıdan yükleyin.")
 
-    # Üst filtre satırı
     filtre_sol, filtre_sag = st.columns(2)
 
     tum_kategoriler = sorted(erp_df["Ürün Kategori"].dropna().unique().tolist())
@@ -808,7 +799,6 @@ if sayfa == "Ana Panel":
             default=[]
         )
 
-    # Filtreleme
     filtrelenmis_df = erp_df.copy()
 
     if secilen_kategoriler:
@@ -817,7 +807,6 @@ if sayfa == "Ana Panel":
     if secilen_sezonlar:
         filtrelenmis_df = filtrelenmis_df[filtrelenmis_df["Sezon"].isin(secilen_sezonlar)]
 
-    # Temel iş hesapları
     filtrelenmis_df["Toplam Ciro (TL)"] = filtrelenmis_df["Birim Satış Fiyatı (TL)"] * filtrelenmis_df["Satılan Adet"]
     filtrelenmis_df["Satılan Malın Maliyeti (TL)"] = filtrelenmis_df["Birim Üretim Maliyeti (TL)"] * filtrelenmis_df["Satılan Adet"]
     filtrelenmis_df["Net Ürün Kârı (TL)"] = filtrelenmis_df["Toplam Ciro (TL)"] - filtrelenmis_df["Satılan Malın Maliyeti (TL)"]
@@ -828,7 +817,6 @@ if sayfa == "Ana Panel":
     net_urun_kari = filtrelenmis_df["Net Ürün Kârı (TL)"].sum() if not filtrelenmis_df.empty else 0
     depodaki_malin_degeri = filtrelenmis_df["Depodaki Malın Değeri (TL)"].sum() if not filtrelenmis_df.empty else 0
 
-    # Kategori bazlı analiz
     kategori_df = (
         filtrelenmis_df.groupby("Ürün Kategori", as_index=False)[
             ["Toplam Ciro (TL)", "Satılan Malın Maliyeti (TL)", "Depodaki Malın Değeri (TL)"]
@@ -840,24 +828,19 @@ if sayfa == "Ana Panel":
 
     st.markdown("###")
 
-    # Üst satır kartlar
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
         summary_card("Toplam Ciro", format_tl(toplam_ciro), "💸", "#ffffff")
-
     with col2:
         summary_card("Satılan Malın Maliyeti", format_tl(satilan_malin_maliyeti), "🏭", "#ffffff")
-
     with col3:
         summary_card("Net Ürün Kârı", format_tl(net_urun_kari), "📈", "#ffffff")
-
     with col4:
         summary_card("Depodaki Malın Değeri", format_tl(depodaki_malin_degeri), "📦", "#ffffff")
 
     st.markdown("###")
 
-    # Orta satır grafikler
     grafik_sol, grafik_sag = st.columns(2)
 
     with grafik_sol:
@@ -917,7 +900,6 @@ if sayfa == "Ana Panel":
 
     st.markdown("###")
 
-    # Alt satır detay tablo
     st.subheader("Ürün Bazlı Karlılık ve Depo Değerleme Detayı")
 
     if filtrelenmis_df.empty:
@@ -1232,127 +1214,182 @@ elif sayfa == "Veri Girişi":
 
 elif sayfa == "Maliyet Simülatörü":
     st.title("🧮 Maliyet Simülatörü")
-    st.caption("Tekstil üretimi için maliyet, toptan satış ve Trendyol satış fiyatı simülasyonu")
+    st.caption("İleri seviye tekstil maliyetlendirme ekranı")
 
-    col1, col2, col3 = st.columns(3)
+    usd_try_kuru, kur_kaynagi = usd_try_kuru_getir()
 
-    with col1:
-        kumas_metre_fiyati = st.number_input(
-            "Kumaş Metre Fiyatı (TL)",
-            min_value=0.0,
-            step=10.0,
-            format="%.2f",
-            value=150.0
-        )
-        urun_basina_kumas = st.number_input(
-            "Ürün Başına Harcanan Kumaş (Metre)",
-            min_value=0.0,
-            step=0.1,
-            format="%.2f",
-            value=1.8
-        )
+    kur_sol, kur_sag = st.columns([1, 2])
 
-    with col2:
-        fason_dikim_maliyeti = st.number_input(
-            "Fason Dikim Maliyeti (TL)",
-            min_value=0.0,
-            step=10.0,
-            format="%.2f",
-            value=90.0
-        )
-        aksesuar_ve_diger = st.number_input(
-            "Aksesuar ve Diğer Giderler (Fermuar, etiket vb. TL)",
-            min_value=0.0,
-            step=10.0,
-            format="%.2f",
-            value=35.0
-        )
+    with kur_sol:
+        st.metric("Canlı USD / TRY Kuru", format_decimal(usd_try_kuru, 4))
 
-    with col3:
-        hedef_toptan_kar_marji = st.number_input(
-            "Hedef Toptan Kâr Marjı (%)",
-            min_value=0.0,
-            max_value=1000.0,
-            step=1.0,
-            format="%.2f",
-            value=35.0
-        )
-        trendyol_komisyon_orani = st.number_input(
-            "Trendyol Komisyon Oranı (%)",
-            min_value=0.0,
-            max_value=99.0,
-            step=0.1,
-            format="%.2f",
-            value=21.5
-        )
-
-    net_uretim_maliyeti = (
-        (kumas_metre_fiyati * urun_basina_kumas)
-        + fason_dikim_maliyeti
-        + aksesuar_ve_diger
-    )
-
-    toptan_satis_fiyati = net_uretim_maliyeti + (
-        net_uretim_maliyeti * hedef_toptan_kar_marji / 100
-    )
-
-    if trendyol_komisyon_orani >= 100:
-        trendyol_satis_fiyati = 0.0
-    else:
-        trendyol_satis_fiyati = toptan_satis_fiyati / (
-            1 - trendyol_komisyon_orani / 100
-        )
+    with kur_sag:
+        if kur_kaynagi == "Canlı kur":
+            st.success("Kur bilgisi canlı kaynaktan alındı.")
+        else:
+            st.warning("Canlı kura ulaşılamadı. Yedek kur kullanılıyor (32,50).")
 
     st.markdown("###")
 
-    r1, r2, r3 = st.columns(3)
+    bilgi_col, usd_col, tl_col = st.columns(3)
 
-    with r1:
-        summary_card(
-            "Net Üretim Maliyeti",
-            format_tl(net_uretim_maliyeti),
-            "🏭",
-            "#eef6ff"
-        )
+    with bilgi_col:
+        st.subheader("Ürün Bilgileri")
+        urun_cinsi = st.text_input("Ürün Cinsi", placeholder="Örn: Gömlek / Mont / Tişört")
+        kumas_rengi = st.text_input("Kumaş Rengi", placeholder="Örn: Siyah / Haki / Ekru")
+        gramaj = st.text_input("Gramaj", placeholder="Örn: 220 GSM")
 
-    with r2:
-        summary_card(
-            "Toptan Satış Fiyatı",
-            format_tl(toptan_satis_fiyati),
-            "🏷️",
-            "#eefbf3"
-        )
+    with usd_col:
+        st.subheader("USD Bazlı Maliyetler")
+        ip_maliyeti_usd = st.number_input("İp Maliyeti ($)", min_value=0.0, step=0.1, format="%.2f", value=1.50)
+        boya_maliyeti_usd = st.number_input("Boya Maliyeti ($)", min_value=0.0, step=0.1, format="%.2f", value=0.90)
+        orme_maliyeti_usd = st.number_input("Örme Maliyeti ($)", min_value=0.0, step=0.1, format="%.2f", value=1.20)
 
-    with r3:
-        summary_card(
-            "Trendyol (Perakende) Satış Fiyatı",
-            format_tl(trendyol_satis_fiyati),
-            "🛒",
-            "#fff6ea"
-        )
+    with tl_col:
+        st.subheader("TL Bazlı Maliyetler")
+        fason_dikim_tl = st.number_input("Fason Dikim (TL)", min_value=0.0, step=1.0, format="%.2f", value=65.0)
+        aksesuar_tl = st.number_input("Aksesuar (TL)", min_value=0.0, step=1.0, format="%.2f", value=18.0)
+        baski_nakis_tl = st.number_input("Baskı/Nakış (TL)", min_value=0.0, step=1.0, format="%.2f", value=14.0)
+        paketleme_tl = st.number_input("Paketleme (TL)", min_value=0.0, step=1.0, format="%.2f", value=9.0)
+
+    toplam_usd_maliyeti = ip_maliyeti_usd + boya_maliyeti_usd + orme_maliyeti_usd
+    toplam_usd_tl_karsiligi = toplam_usd_maliyeti * usd_try_kuru
+    toplam_try_maliyeti = fason_dikim_tl + aksesuar_tl + baski_nakis_tl + paketleme_tl
+    toplam_maliyet = toplam_usd_tl_karsiligi + toplam_try_maliyeti
 
     st.markdown("###")
-    st.subheader("Hesaplama Özeti")
+
+    kart1, kart2, kart3 = st.columns([1, 1, 1.4])
+
+    with kart1:
+        summary_card("Toplam USD Bazlı Maliyet", f"${format_decimal(toplam_usd_maliyeti, 2)}", "💵", "#ffffff")
+
+    with kart2:
+        summary_card("Toplam TL Bazlı Maliyet", format_tl(toplam_try_maliyeti), "🏷️", "#ffffff")
+
+    with kart3:
+        summary_card("Toplam Üretim Maliyeti", format_tl(toplam_maliyet), "🏭", "#eef6ff")
+
+    st.markdown("###")
 
     ozet_df = pd.DataFrame(
         {
             "Kalem": [
-                "Kumaş Toplamı",
-                "Fason Dikim",
-                "Aksesuar ve Diğer",
-                "Net Üretim Maliyeti",
-                "Toptan Kâr Marjı",
-                "Trendyol Komisyonu"
+                "Ürün Cinsi",
+                "Kumaş Rengi",
+                "Gramaj",
+                "İp Maliyeti ($)",
+                "Boya Maliyeti ($)",
+                "Örme Maliyeti ($)",
+                "USD Bazlı Maliyet Toplamı",
+                "USD Bazlı Tutarın TL Karşılığı",
+                "Fason Dikim (TL)",
+                "Aksesuar (TL)",
+                "Baskı/Nakış (TL)",
+                "Paketleme (TL)",
+                "Toplam TL Bazlı Maliyet",
+                "Genel Toplam Maliyet",
             ],
             "Değer": [
-                format_tl(kumas_metre_fiyati * urun_basina_kumas),
-                format_tl(fason_dikim_maliyeti),
-                format_tl(aksesuar_ve_diger),
-                format_tl(net_uretim_maliyeti),
-                f"%{hedef_toptan_kar_marji:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
-                f"%{trendyol_komisyon_orani:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+                urun_cinsi if urun_cinsi else "-",
+                kumas_rengi if kumas_rengi else "-",
+                gramaj if gramaj else "-",
+                f"${format_decimal(ip_maliyeti_usd, 2)}",
+                f"${format_decimal(boya_maliyeti_usd, 2)}",
+                f"${format_decimal(orme_maliyeti_usd, 2)}",
+                f"${format_decimal(toplam_usd_maliyeti, 2)}",
+                format_tl(toplam_usd_tl_karsiligi),
+                format_tl(fason_dikim_tl),
+                format_tl(aksesuar_tl),
+                format_tl(baski_nakis_tl),
+                format_tl(paketleme_tl),
+                format_tl(toplam_try_maliyeti),
+                format_tl(toplam_maliyet),
             ]
         }
     )
-
     st.dataframe(ozet_df, use_container_width=True, hide_index=True)
+
+elif sayfa == "Depo & Barkod Radarı":
+    st.title("📡 Depo & Barkod Radarı")
+    st.caption("Barkod okut, ürünün tam yerini anında bul ve depo operasyonunu hızlandır.")
+
+    barkod_db = pd.DataFrame(
+        {
+            "Barkod": ["1001", "1002", "1003", "1004", "1005", "1006"],
+            "Ürün Adı": [
+                "Slim Fit Poplin Gömlek",
+                "Kapitone Şişme Mont",
+                "Oversize Sweatshirt",
+                "Premium Bisiklet Yaka Tişört",
+                "Likralı Klasik Pantolon",
+                "Basic Kapüşonlu Sweat",
+            ],
+            "Ürün Kategori": ["Gömlek", "Mont", "Sweatshirt", "Tişört", "Pantolon", "Sweatshirt"],
+            "Depo": ["Merdiven Depo", "Köşe Depo", "Merdiven Depo", "Köşe Depo", "Merdiven Depo", "Köşe Depo"],
+            "Raf": ["Raf 1", "Raf 3", "Raf 2", "Raf 4", "Raf 1", "Raf 2"],
+            "Seviye": ["Alt", "Üst", "Orta", "Alt", "Üst", "Orta"],
+            "Stok Adedi": [120, 48, 75, 210, 62, 94],
+        }
+    )
+
+    barkod = st.text_input(
+        "Barkod Okut veya Gir",
+        placeholder="Örn: 1001"
+    ).strip()
+
+    st.markdown("###")
+
+    if barkod:
+        bulunan_df = barkod_db[barkod_db["Barkod"] == barkod]
+
+        if bulunan_df.empty:
+            st.error("Ürün bulunamadı. Barkodu kontrol edin.")
+        else:
+            urun = bulunan_df.iloc[0]
+
+            st.markdown(
+                f"""
+                <div style="
+                    background: linear-gradient(135deg, #0f172a 0%, #1f2937 100%);
+                    padding: 26px;
+                    border-radius: 22px;
+                    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
+                    color: white;
+                    margin-bottom: 18px;
+                ">
+                    <div style="font-size: 15px; opacity: 0.8; margin-bottom: 8px;">✅ Ürün Bulundu!</div>
+                    <div style="font-size: 28px; font-weight: 800; margin-bottom: 12px;">{urun["Ürün Adı"]}</div>
+                    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; font-size: 15px;">
+                        <div><strong>Barkod:</strong> {urun["Barkod"]}</div>
+                        <div><strong>Kategori:</strong> {urun["Ürün Kategori"]}</div>
+                        <div><strong>Depo:</strong> {urun["Depo"]}</div>
+                        <div><strong>Raf:</strong> {urun["Raf"]}</div>
+                        <div><strong>Seviye:</strong> {urun["Seviye"]}</div>
+                        <div><strong>Stok Adedi:</strong> {urun["Stok Adedi"]}</div>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+            kart_sol, kart_orta, kart_sag = st.columns(3)
+            with kart_sol:
+                summary_card("Depo", str(urun["Depo"]), "🏢", "#ffffff")
+            with kart_orta:
+                summary_card("Raf", str(urun["Raf"]), "🗄️", "#ffffff")
+            with kart_sag:
+                summary_card("Seviye", str(urun["Seviye"]), "📍", "#ffffff")
+
+            st.markdown("###")
+
+            if st.button("Stoktan Düş", key=f"stok_dus_{barkod}"):
+                st.success("Simülasyon: Ürün stoktan düşüldü olarak işaretlendi. Gelecekte dış satış sistemi API'sine bağlanabilir.")
+    else:
+        st.info("Barkod girildiğinde ürünün tam depo konumu burada gösterilir.")
+
+    st.markdown("###")
+    st.subheader("Depo Yerleşim Referansı")
+
+    referans_df = barkod_db.copy()
+    st.dataframe(referans_df, use_container_width=True, hide_index=True)
