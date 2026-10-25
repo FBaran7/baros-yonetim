@@ -16,12 +16,20 @@ A practical operations tool I built to manage the day-to-day needs of running an
 
 - Operational visibility for marketplace decisions
 
+## Technology
+
+Python, Streamlit, SQLite, pandas, and Plotly.
+
 ## Development Approach
 
 Built using AI-assisted development (ChatGPT) following a step-by-step iterative approach. Each module was scoped, implemented, and tested incrementally based on real operational needs from BAROS's Trendyol store.
 
 ## Author
 
-Mert Baran Yıldırım — Management Information Systems student at Yeditepe University.  
-Built while operating BAROS Menswear's Trendyol store (347+ orders fulfilled).  
+Mert Baran Yıldırım — Management Information Systems student at Yeditepe University.
+Built around practical experience operating BAROS Menswear's Trendyol store.
 LinkedIn: https://www.linkedin.com/in/mert-baran-yıldırım-7757383b6/
+
+## Portfolio
+
+[Professional profile, CV, and project previews](https://mert-baran-portfolio.vercel.app).
